@@ -1,0 +1,2802 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Wediom</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+  :root{
+    /* ==== COLORES DE MARCA WEDIOM — cámbialos aquí si tienes el hex exacto ==== */
+    --accent:#2F5FEC; --accent2:#2547c2; --accent-soft:#eaf0ff;
+    /* ==== resto del tema (blanco / gris muy claro) ==== */
+    --bg:#f4f6fb; --panel:#ffffff; --panel2:#eef1f8; --border:#dfe4ee;
+    --text:#1a2340; --muted:#6b7385;
+    --good:#16a34a; --good-soft:#e7f7ee; --warn:#d97706; --danger:#dc2626; --danger-soft:#fdecec;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;}
+  #app{display:flex;flex-direction:column;height:100vh;}
+
+  /* Top bar */
+  #topbar{display:flex;align-items:center;gap:16px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--border);flex:0 0 auto;}
+  #topbar h1{font-size:16px;margin:0;font-weight:800;color:var(--text);white-space:nowrap;}
+  .tabs{display:flex;gap:4px;background:var(--panel2);border-radius:8px;padding:3px;}
+  .tab-btn{border:none;background:transparent;color:var(--muted);padding:7px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;}
+  .tab-btn.active{background:var(--accent);color:#fff;}
+  .spacer{flex:1;}
+  .backup-btns{display:flex;gap:8px;}
+
+  button{font-family:inherit;}
+  .btn{background:var(--panel2);color:var(--text);border:1px solid var(--border);padding:7px 12px;border-radius:6px;cursor:pointer;font-size:13px;}
+  .btn:hover{border-color:var(--accent);color:var(--accent);}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .btn.primary:hover{background:var(--accent2);color:#fff;}
+  .btn.danger{color:var(--danger);}
+  .btn.small{padding:4px 9px;font-size:12px;}
+  input[type=text],input[type=number],input[type=date],select,textarea{
+    background:#fff;border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 9px;font-size:13px;font-family:inherit;
+  }
+  textarea{width:100%;resize:vertical;min-height:60px;}
+
+  /* Views */
+  .view{flex:1;display:none;min-height:0;}
+  .view.active{display:flex;}
+
+  /* ---- Presentador ---- */
+  #presentador-toolbar{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--border);flex-wrap:wrap;}
+  #presentador-toolbar .sep{width:1px;align-self:stretch;background:var(--border);margin:0 4px;}
+  #presentador-body{flex:1;display:flex;min-height:0;}
+  #thumbs{width:150px;flex:0 0 auto;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:8px;transition:width .18s ease, padding .18s ease;}
+  #thumbs.collapsed{width:0;padding:0;overflow:hidden;border-right:none;}
+  .thumb{position:relative;margin-bottom:8px;border-radius:6px;overflow:hidden;border:2px solid var(--border);cursor:pointer;}
+  .thumb.current{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
+  .thumb img{display:block;width:100%;height:84px;object-fit:cover;background:#f0f2f7;}
+  .thumb .idx{position:absolute;top:2px;left:4px;font-size:10px;background:rgba(26,35,64,.65);color:#fff;padding:1px 5px;border-radius:4px;}
+  .thumb .seen{position:absolute;bottom:2px;right:4px;font-size:12px;background:var(--good);color:#fff;padding:0 4px;border-radius:4px;font-weight:700;}
+  .thumb .playicon{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:20px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6);}
+  .thumb .audioThumb{width:100%;height:84px;display:flex;align-items:center;justify-content:center;font-size:26px;background:#eef1f8;}
+  .thumb .delSlide{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(26,35,64,.7);color:#fff;font-size:11px;line-height:18px;text-align:center;opacity:0;transition:opacity .12s ease, background .12s ease;}
+  .thumb:hover .delSlide{opacity:1;}
+  .thumb .delSlide:hover{background:var(--danger);}
+  .thumb.dragging{opacity:.35;}
+  .thumb.drag-over-top{box-shadow:inset 0 3px 0 0 var(--accent);}
+  .thumb.drag-over-bottom{box-shadow:inset 0 -3px 0 0 var(--accent);}
+  #stage-wrap{flex:1;display:flex;align-items:center;justify-content:center;background:#e7ebf3;position:relative;overflow:hidden;}
+  #stage{position:relative;max-width:100%;max-height:100%;box-shadow:0 4px 24px rgba(26,35,64,.18);border-radius:4px;}
+  #slideImg,#slideVideo{display:block;max-width:88vw;max-height:82vh;user-select:none;-webkit-user-drag:none;background:#fff;border-radius:4px;}
+  #audioSlideWrap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#fff;border-radius:8px;padding:48px 60px;box-shadow:0 4px 24px rgba(26,35,64,.12);min-width:320px;}
+  #audioIcon{font-size:64px;}
+  #audioFileName{font-size:14px;color:var(--muted);max-width:360px;text-align:center;word-break:break-word;}
+  #slideAudio{width:320px;}
+  #classTimer{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px 6px;}
+  #classTimer button{border:none;background:none;cursor:pointer;font-size:12px;color:var(--muted);padding:2px 4px;}
+  #classTimer button:hover{color:var(--accent);}
+  #classTimer.timer-hidden #timerDisplay, #classTimer.timer-hidden #timerToggle, #classTimer.timer-hidden #timerReset{display:none;}
+  #annCanvas{position:absolute;top:0;left:0;cursor:crosshair;}
+  #placeholder{color:var(--muted);text-align:center;padding:40px;max-width:460px;font-size:14px;line-height:1.5;}
+  #lens{position:fixed;width:220px;height:220px;border-radius:50%;border:3px solid var(--accent);box-shadow:0 0 0 3px #fff,0 8px 24px rgba(26,35,64,.35);pointer-events:none;display:none;z-index:999;background-repeat:no-repeat;background-color:#fff;}
+  .side-tab{position:absolute;top:50%;transform:translateY(-50%);z-index:50;width:22px;height:56px;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;padding:0;}
+  .side-tab:hover{color:var(--accent);border-color:var(--accent);}
+  .side-tab.left{left:0;border-radius:0 8px 8px 0;}
+  .side-tab.right{right:0;border-radius:8px 0 0 8px;}
+  #notes-panel{width:280px;flex:0 0 auto;background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;padding:12px;position:relative;transition:width .18s ease, padding .18s ease;}
+  #notes-panel.resizing{transition:none;}
+  #notes-panel.collapsed{width:0!important;padding:0;overflow:hidden;border-left:none;}
+  #notes-panel .notes-header{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em;display:flex;align-items:center;gap:8px;}
+  #notes-panel .notes-header .grow{flex:1;}
+  #notesFontDown,#notesFontUp{border:1px solid var(--border);background:var(--panel2);color:var(--text);width:20px;height:20px;border-radius:4px;cursor:pointer;font-size:12px;line-height:1;padding:0;}
+  #notesResizeHandle{position:absolute;top:0;left:-4px;width:8px;height:100%;cursor:col-resize;z-index:60;}
+  #notesResizeHandle:hover, #notesResizeHandle.active{background:var(--accent-soft);}
+  #slideNotes{flex:1;width:100%;resize:none;font-size:16px;line-height:1.5;}
+  #wordLookupBar{display:none;align-items:center;gap:8px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:7px;padding:6px 8px;margin-bottom:8px;font-size:12px;}
+  #wordLookupBar.show{display:flex;}
+  #wordLookupBar .w{font-weight:700;color:var(--accent2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  #wordLookupBar button{background:var(--accent);color:#fff;border:none;border-radius:5px;padding:4px 9px;font-size:12px;cursor:pointer;font-weight:600;}
+  #wordLookupPopover{display:none;position:absolute;left:12px;right:12px;top:44px;background:var(--panel);border:1px solid var(--border);border-radius:9px;box-shadow:0 10px 30px rgba(26,35,64,.25);padding:14px;z-index:80;max-height:70%;overflow-y:auto;}
+  #wordLookupPopover.show{display:block;}
+  #wordLookupPopover .close{position:absolute;top:8px;right:10px;cursor:pointer;color:var(--muted);font-size:14px;}
+  #wordLookupPopover .term{font-size:18px;font-weight:800;color:var(--text);margin-bottom:2px;}
+  #wordLookupPopover .translation{font-size:22px;font-weight:700;color:var(--accent);margin-bottom:10px;}
+  #wordLookupPopover .section-label{font-size:10px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.03em;margin:8px 0 3px;}
+  #wordLookupPopover .pos{display:inline-block;background:var(--panel2);color:var(--muted);border-radius:4px;padding:1px 6px;font-size:11px;margin-right:6px;}
+  #wordLookupPopover .def{font-size:13px;margin-bottom:6px;line-height:1.4;}
+  #wordLookupPopover .example{font-size:12px;color:var(--muted);font-style:italic;}
+  .lookup-translate-btn{background:none;border:none;cursor:pointer;font-size:11px;opacity:.45;padding:0 2px;vertical-align:middle;}
+  .lookup-translate-btn:hover{opacity:1;}
+  .lookup-alt{cursor:pointer;color:var(--accent2);border-bottom:1px dotted var(--accent2);}
+  .lookup-alt:hover{border-bottom-style:solid;}
+  #wordLookupPopover .loading{color:var(--muted);font-size:13px;}
+  #wordLookupPopover .errmsg{color:var(--danger);font-size:13px;}
+  #wordLookupPopover .fallback-links{margin-top:10px;font-size:12px;}
+  #wordLookupPopover .fallback-links a{color:var(--accent);text-decoration:none;margin-right:12px;}
+  #slideCounter{font-size:12px;color:var(--muted);min-width:56px;text-align:center;}
+  select#activeStudent{max-width:180px;}
+  label.chk{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap;}
+  .swatch{width:18px;height:18px;border-radius:50%;border:2px solid rgba(26,35,64,.12);cursor:pointer;display:inline-block;}
+  .swatch.active{outline:2px solid var(--accent);}
+  #loadingMsg{font-size:12px;color:var(--accent);font-weight:600;}
+
+  /* ---- Estudiantes ---- */
+  #estudiantes-body{flex:1;display:flex;min-height:0;width:100%;}
+  #student-list-panel{width:280px;flex:0 0 auto;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;}
+  #student-list-panel .panel-head{padding:12px;border-bottom:1px solid var(--border);display:flex;gap:8px;}
+  #student-list{flex:1;overflow-y:auto;padding:8px;}
+  .student-row{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:7px;cursor:pointer;margin-bottom:4px;}
+  .student-row:hover{background:var(--panel2);}
+  .student-row.active{background:var(--accent);}
+  .student-row .name{font-weight:600;font-size:13px;flex:1;color:var(--text);}
+  .student-row.active .name{color:#fff;}
+  .student-row .tag{font-size:10px;background:var(--panel2);padding:2px 6px;border-radius:10px;color:var(--muted);}
+  .student-row.active .tag{color:#fff;background:rgba(255,255,255,.25);}
+  .student-row .del{opacity:.5;font-size:13px;padding:2px 5px;color:var(--text);}
+  .student-row.active .del{color:#fff;}
+  .student-row .del:hover{opacity:1;color:var(--danger);}
+  .student-row .progreso{opacity:.6;font-size:13px;padding:2px 4px;border-radius:5px;}
+  .student-row .progreso:hover{opacity:1;background:rgba(255,255,255,.15);}
+
+  #student-detail{flex:1;overflow-y:auto;padding:20px 26px;}
+  #student-detail .empty{color:var(--muted);text-align:center;margin-top:80px;}
+  #student-detail h2{margin:0 0 4px;font-size:20px;}
+  #student-detail .meta{color:var(--muted);font-size:13px;margin-bottom:18px;}
+  .subtabs{display:flex;gap:4px;background:var(--panel2);border-radius:8px;padding:3px;width:fit-content;margin-bottom:16px;}
+  .subtab-btn{border:none;background:transparent;color:var(--muted);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;}
+  .wb-text-box{position:absolute;min-width:100px;max-width:70%;background:rgba(255,255,255,.85);border:1px dashed rgba(0,0,0,.3);font-size:18px;font-family:inherit;padding:3px 6px;border-radius:4px;resize:none;overflow:hidden;pointer-events:auto;outline:none;line-height:1.3;}
+  .wb-text-box:focus{border-color:var(--accent);border-style:solid;background:#fff;}
+  .subtab-btn.active{background:var(--accent);color:#fff;}
+  .subview{display:none;}
+  .subview.active{display:block;}
+  .level-group{margin-bottom:14px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 14px;}
+  .level-group h4{margin:0 0 8px;font-size:13px;color:var(--accent);}
+  .slide-chip{display:inline-flex;align-items:center;gap:5px;background:var(--panel2);border-radius:5px;padding:3px 8px;margin:0 5px 5px 0;font-size:11px;color:var(--muted);}
+  .slide-chip.seen{color:var(--good);}
+  .row-form{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--border);}
+  th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;}
+  .list-item{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
+  .list-item .date{font-size:11px;color:var(--muted);white-space:nowrap;}
+  .list-item .del{cursor:pointer;color:var(--muted);}
+  .list-item .del:hover{color:var(--danger);}
+  .att-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;}
+  .att-badge.presente{background:var(--good-soft);color:var(--good);}
+  .att-badge.ausente{background:var(--danger-soft);color:var(--danger);}
+
+  .modal-bg{position:fixed;inset:0;background:rgba(26,35,64,.45);display:none;align-items:center;justify-content:center;z-index:1000;}
+  .modal-bg.active{display:flex;}
+  .modal{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:20px;width:340px;box-shadow:0 12px 40px rgba(26,35,64,.25);}
+  .modal h3{margin:0 0 14px;font-size:15px;}
+  .modal .field{margin-bottom:12px;}
+  .modal .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;}
+  .modal .field input, .modal .field select{width:100%;}
+  .modal .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <h1>🎓 <span style="color:var(--accent);">Wediom</span></h1>
+    <div class="tabs">
+      <button class="tab-btn active" data-view="estudiantes">Estudiantes</button>
+      <button class="tab-btn" data-view="presentador">Presentador</button>
+      <button class="tab-btn" data-view="ejercicios">Ejercicios</button>
+      <button class="tab-btn" data-view="pizarra">Pizarra</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="backup-btns">
+      <button class="btn small" id="btnExport">⬇ Exportar respaldo</button>
+      <button class="btn small" id="btnImport">⬆ Importar respaldo</button>
+      <input type="file" id="importFile" accept="application/json" style="display:none">
+    </div>
+  </div>
+
+  <!-- ===================== PRESENTADOR ===================== -->
+  <div class="view" id="view-presentador">
+    <div style="flex:1;display:flex;flex-direction:column;min-height:0;">
+      <div id="presentador-toolbar">
+        <button class="btn primary small" id="btnPickFolder">📂 Elegir carpeta</button>
+        <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none">
+        <button class="btn small" id="btnPickFiles">📄 Subir PDF / imágenes / video / audio</button>
+        <input type="file" id="filesInput" multiple accept="image/*,.pdf,application/pdf,video/*,audio/*" style="display:none">
+        <span id="levelLabel" style="font-size:12px;color:var(--muted);"></span>
+        <span id="loadingMsg" style="display:none;">⏳ Procesando PDF...</span>
+        <div class="sep"></div>
+        <button class="btn small" id="btnPrev">◀</button>
+        <span id="slideCounter">0 / 0</span>
+        <button class="btn small" id="btnNext">▶</button>
+        <div class="sep"></div>
+        <button class="btn small" id="btnFullscreen">⛶ Pantalla completa</button>
+        <label class="chk"><input type="checkbox" id="chkLupa"> 🔍 Lupa</label>
+        <div class="sep"></div>
+        <div id="classTimer" class="timer-hidden" title="Cronómetro de la clase">
+          <button id="timerEye" title="Mostrar/ocultar el cronómetro (para no poner presión al alumno)">🙈</button>
+          <span id="timerDisplay">00:00</span>
+          <button id="timerToggle" title="Iniciar">▶</button>
+          <button id="timerReset" title="Reiniciar">↺</button>
+        </div>
+        <div class="sep"></div>
+        <label class="chk">✏️ Anotar
+          <input type="checkbox" id="chkPen">
+        </label>
+        <span class="swatch active" style="background:#e5484d" data-color="#e5484d"></span>
+        <span class="swatch" style="background:#f5b100" data-color="#f5b100"></span>
+        <span class="swatch" style="background:#2F5FEC" data-color="#2F5FEC"></span>
+        <span class="swatch" style="background:#16a34a" data-color="#16a34a"></span>
+        <button class="btn small" id="btnClearAnn">Borrar anotación</button>
+        <div class="sep"></div>
+        <span style="font-size:12px;color:var(--muted);">Clase con:</span>
+        <select id="activeStudent"><option value="">— nadie seleccionado —</option></select>
+        <label class="chk"><input type="checkbox" id="chkMarkSeen"> Marcar como vista</label>
+        <div class="sep"></div>
+        <button class="btn small danger" id="btnRemoveDeck" title="Quitar todas las diapositivas cargadas (no borra tus archivos)" style="display:none;">🗑 Quitar carpeta</button>
+      </div>
+      <div id="presentador-body">
+        <div id="thumbs"></div>
+        <div id="stage-wrap">
+          <button class="side-tab left" id="toggleThumbsTab" title="Mostrar/ocultar miniaturas">◀</button>
+          <div id="placeholder">Elige una carpeta, o sube directamente archivos PDF, imágenes y/o video (por ejemplo A1, A2, B1 o B2) para empezar a presentar. Se ordenan automáticamente por nombre de archivo, y cada página de un PDF se muestra como una diapositiva independiente.</div>
+          <div id="stage" style="display:none;">
+            <img id="slideImg">
+            <video id="slideVideo" controls style="display:none;"></video>
+            <div id="audioSlideWrap" style="display:none;">
+              <div id="audioIcon">🎧</div>
+              <div id="audioFileName"></div>
+              <audio id="slideAudio" controls></audio>
+            </div>
+            <canvas id="annCanvas"></canvas>
+          </div>
+          <button class="side-tab right" id="toggleNotesTab" title="Mostrar/ocultar notas">▶</button>
+        </div>
+        <div id="notes-panel">
+          <div id="notesResizeHandle" title="Arrastra para agrandar/achicar"></div>
+          <div class="notes-header">
+            <span>📝 Notas de esta diapositiva</span>
+            <span class="grow"></span>
+            <button id="notesFontDown" title="Letra más pequeña">A-</button>
+            <button id="notesFontUp" title="Letra más grande">A+</button>
+          </div>
+          <div id="wordLookupBar">
+            <span class="w" id="wordLookupTerm"></span>
+            <button id="wordLookupBtn">🔍 Buscar significado</button>
+          </div>
+          <textarea id="slideNotes" placeholder="Anotaciones, ejemplos o ideas para mencionar con esta diapositiva... (selecciona una palabra para buscar su significado al instante)"></textarea>
+          <div id="wordLookupPopover">
+            <span class="close" id="wordLookupClose">✕</span>
+            <div id="wordLookupContent"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="lens"></div>
+
+  <!-- ===================== ESTUDIANTES ===================== -->
+  <div class="view active" id="view-estudiantes">
+    <div id="estudiantes-body">
+      <div id="student-list-panel">
+        <div class="panel-head">
+          <button class="btn primary small" style="width:100%;" id="btnNewStudent">+ Nuevo estudiante / grupo</button>
+        </div>
+        <div id="student-list"></div>
+      </div>
+      <div id="student-detail">
+        <div class="empty">Selecciona o crea un estudiante/grupo para ver su progreso.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== EJERCICIOS ===================== -->
+  <div class="view" id="view-ejercicios">
+    <div style="flex:1;overflow-y:auto;padding:20px 26px;">
+      <div style="max-width:820px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <h2 style="margin:0;font-size:20px;">Generador de ejercicios</h2>
+          <button class="btn small" id="btnAISettings">⚙️ Configurar IA</button>
+        </div>
+        <div class="subtabs" id="exLevelTabs">
+          <button class="subtab-btn active" data-level="A1">A1</button>
+          <button class="subtab-btn" data-level="A2">A2</button>
+          <button class="subtab-btn" data-level="B1">B1</button>
+          <button class="subtab-btn" data-level="B2">B2</button>
+        </div>
+        <div class="field">
+          <label>Tema (según el temario de este nivel)</label>
+          <select id="exTopic" style="width:100%;"></select>
+        </div>
+        <div class="row-form">
+          <div class="field" style="flex:1;min-width:220px;">
+            <label>Tipo de ejercicio</label>
+            <select id="exType" style="width:100%;">
+              <option value="grammar">Gramática / Writing (documento Word)</option>
+              <option value="listening">Listening (guion + reproducir audio)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label id="exCountLabel">Número de preguntas</label>
+            <input type="number" id="exCount" value="8" min="4" max="15" style="width:90px;">
+          </div>
+        </div>
+        <div class="field">
+          <label>Base opcional: sube un PDF o Word (.docx) con ejercicios ya hechos — la IA copiará su estructura y estilo (no el contenido), y generará esa misma cantidad de ejercicios</label>
+          <input type="file" id="exRefFile" accept=".pdf,.docx">
+          <div id="exRefStatus" style="font-size:12px;color:var(--muted);margin-top:6px;"></div>
+        </div>
+        <div class="field">
+          <label>Aclaratoria para la IA (opcional)</label>
+          <textarea id="exNotes" placeholder="Ej: enfócate solo en oraciones afirmativas, usa vocabulario de viajes, hazlo más corto… Si lo dejas en blanco, se genera normal."></textarea>
+        </div>
+        <button class="btn primary" id="btnGenerateEx">✨ Generar con IA</button>
+        <div id="exOutput" style="margin-top:20px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== PIZARRA ===================== -->
+  <div class="view" id="view-pizarra" style="flex-direction:column;">
+    <div style="padding:12px 20px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;border-bottom:1px solid var(--border);">
+      <button class="btn small" id="btnWbConfig">⚙️ Configurar Pizarra</button>
+      <input id="wbRoomInput" placeholder="Código de sala (ej: A2-JUEVES)" style="width:180px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
+      <button class="btn small" id="btnWbJoin">Entrar / Crear sala</button>
+      <button class="btn small" id="btnWbShare">🔗 Compartir con alumnos</button>
+      <div style="display:flex;gap:4px;margin-left:6px;">
+        <button class="btn small" id="btnModeDraw" style="background:var(--accent);color:#fff;">✏️ Dibujar</button>
+        <button class="btn small" id="btnModeText">🔤 Texto</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-left:6px;">
+        <span onclick="setWbColor('#e5484d')" style="width:20px;height:20px;border-radius:50%;background:#e5484d;cursor:pointer;border:2px solid #fff;box-shadow:0 0 0 1px var(--border);"></span>
+        <span onclick="setWbColor('#f5a524')" style="width:20px;height:20px;border-radius:50%;background:#f5a524;cursor:pointer;border:2px solid #fff;box-shadow:0 0 0 1px var(--border);"></span>
+        <span onclick="setWbColor('#2F5FEC')" style="width:20px;height:20px;border-radius:50%;background:#2F5FEC;cursor:pointer;border:2px solid #fff;box-shadow:0 0 0 1px var(--border);"></span>
+        <span onclick="setWbColor('#2ecc71')" style="width:20px;height:20px;border-radius:50%;background:#2ecc71;cursor:pointer;border:2px solid #fff;box-shadow:0 0 0 1px var(--border);"></span>
+      </div>
+      <button class="btn small" id="btnWbClear">🗑️ Borrar pizarra</button>
+      <span id="wbStatus" style="font-size:12px;color:var(--muted);margin-left:auto;">Sin conectar</span>
+    </div>
+    <div id="wbCanvasWrap" style="flex:1;position:relative;background:#fff;overflow:hidden;">
+      <canvas id="wbCanvas" style="width:100%;height:100%;display:block;touch-action:none;cursor:crosshair;"></canvas>
+      <div id="wbTextLayer" style="position:absolute;inset:0;pointer-events:none;"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal configurar Pizarra (Firebase) -->
+<div class="modal-bg" id="wbConfigModalBg">
+  <div class="modal">
+    <h3>Configurar Pizarra (Firebase)</h3>
+    <p style="font-size:12px;color:var(--muted);margin:-6px 0 12px;">Pega aquí los datos de tu proyecto gratuito de Firebase — permiten que la pizarra se sincronice en tiempo real entre tú y tus alumnos. Se guardan solo en este navegador. Guía de cómo conseguirlos: pídesela a Claude si no la tienes a la mano.</p>
+    <div class="field"><label>API Key</label><input id="wbCfgApiKey" placeholder="AIza..."></div>
+    <div class="field"><label>Auth Domain</label><input id="wbCfgAuthDomain" placeholder="tu-proyecto.firebaseapp.com"></div>
+    <div class="field"><label>Database URL</label><input id="wbCfgDbUrl" placeholder="https://tu-proyecto-default-rtdb.firebaseio.com"></div>
+    <div class="field"><label>Project ID</label><input id="wbCfgProjectId" placeholder="tu-proyecto"></div>
+    <div class="field"><label>Storage Bucket</label><input id="wbCfgStorageBucket" placeholder="tu-proyecto.appspot.com"></div>
+    <div class="field"><label>Messaging Sender ID</label><input id="wbCfgSenderId" placeholder="123456789"></div>
+    <div class="field"><label>App ID</label><input id="wbCfgAppId" placeholder="1:123:web:abc"></div>
+    <div class="actions">
+      <button class="btn" id="wbConfigCancel">Cerrar</button>
+      <button class="btn primary" id="wbConfigSave">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal configurar IA -->
+<div class="modal-bg" id="aiSettingsModalBg">
+  <div class="modal">
+    <h3>Configurar IA (OpenRouter)</h3>
+    <p style="font-size:12px;color:var(--muted);margin:-6px 0 12px;">Pega tu API key de <b>OpenRouter</b> (empieza con <code>sk-or-v1-...</code>). Se usa el modelo de DeepSeek a través de OpenRouter, y se guarda solo en este navegador. Consíguela en openrouter.ai → Keys.</p>
+    <div class="field">
+      <label>API Key</label>
+      <input type="text" id="aiApiKey" placeholder="sk-or-v1-...">
+    </div>
+    <div id="aiKeyStatus" style="font-size:12px;color:var(--muted);margin-bottom:6px;"></div>
+    <div class="actions">
+      <button class="btn" id="aiSettingsCancel">Cerrar</button>
+      <button class="btn" id="btnTestAI">Probar conexión</button>
+      <button class="btn primary" id="aiSettingsSave">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="studentModalBg">
+  <div class="modal">
+    <h3 id="studentModalTitle">Nuevo estudiante / grupo</h3>
+    <div class="field">
+      <label>Nombre</label>
+      <input type="text" id="studentName" placeholder="Ej: María Delgado, o Grupo Martes 6pm">
+    </div>
+    <div class="field">
+      <label>Tipo</label>
+      <select id="studentType">
+        <option value="individual">Estudiante individual</option>
+        <option value="grupo">Grupo</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Nivel</label>
+      <select id="studentLevel">
+        <option value="A1">A1</option>
+        <option value="A2">A2</option>
+        <option value="B1">B1</option>
+        <option value="B2">B2</option>
+        <option value="Otro">Otro</option>
+      </select>
+    </div>
+    <div class="actions">
+      <button class="btn" id="studentModalCancel">Cancelar</button>
+      <button class="btn primary" id="studentModalSave">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------------------------------------------------------------
+// Persistencia
+// ---------------------------------------------------------------
+const STORAGE_KEY = 'presentador_clases_data_v1';
+function defaultData(){ return { students: [], progress: {}, deckNotes: {} }; }
+function loadData(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return defaultData();
+    const parsed = JSON.parse(raw);
+    return Object.assign(defaultData(), parsed);
+  }catch(e){ console.error('Error cargando datos', e); return defaultData(); }
+}
+let DATA = loadData();
+function saveData(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA)); }
+function uid(){ return 's_' + Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function ensureProgress(id){
+  if(!DATA.progress[id]) DATA.progress[id] = { seenSlides:{}, notes:[], attendance:[], grades:[] };
+  return DATA.progress[id];
+}
+
+// ---------------------------------------------------------------
+// Tabs principales
+// ---------------------------------------------------------------
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.getElementById('view-'+btn.dataset.view).classList.add('active');
+    if(btn.dataset.view === 'estudiantes'){ renderStudentList(); renderStudentDetail(selectedStudentId); }
+    if(btn.dataset.view === 'pizarra'){ setTimeout(resizeWbCanvas, 50); }
+  });
+});
+
+// ---------------------------------------------------------------
+// Backup / restore
+// ---------------------------------------------------------------
+document.getElementById('btnExport').addEventListener('click', ()=>{
+  const blob = new Blob([JSON.stringify(DATA, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'presentador-respaldo-' + todayStr() + '.json';
+  a.click();
+});
+document.getElementById('btnImport').addEventListener('click', ()=> document.getElementById('importFile').click());
+document.getElementById('importFile').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const parsed = JSON.parse(reader.result);
+      if(!confirm('Esto va a reemplazar los datos actuales (estudiantes, progreso, notas) con los del respaldo. ¿Continuar?')) return;
+      DATA = Object.assign(defaultData(), parsed);
+      saveData();
+      renderStudentList();
+      renderActiveStudentSelect();
+      renderStudentDetail(null);
+      alert('Respaldo importado correctamente.');
+    }catch(err){ alert('El archivo no es un respaldo válido.'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+// ---------------------------------------------------------------
+// PRESENTADOR
+// ---------------------------------------------------------------
+let slides = [];        // {name, url}
+let currentIndex = -1;
+let currentLevelKey = '';
+const studentDecks = {}; // cache en memoria de esta sesión, UNA por estudiante/grupo: { [studentId]: {slides, currentIndex, levelKey} }
+let pendingLevelKeyForFolder = null; // etiqueta a usar cuando se termine de cargar la carpeta
+const DEFAULT_PLACEHOLDER_TEXT = document.getElementById('placeholder').textContent;
+
+// Texto del placeholder según si hay un estudiante/grupo activo sin diapositivas cargadas todavía.
+// De paso deja preparada la etiqueta (nivel) que se usará SOLO si el usuario decide cargar una carpeta/archivos.
+function placeholderTextFor(activeId){
+  const s = activeId ? DATA.students.find(x=>x.id===activeId) : null;
+  if(s){
+    pendingLevelKeyForFolder = s.nivel;
+    return 'Aún no hay diapositivas cargadas para ' + s.nombre + ' (' + s.nivel + '). Usa "Elegir carpeta" o "Elegir archivos" arriba para cargar SU propio material.';
+  }
+  pendingLevelKeyForFolder = null;
+  return DEFAULT_PLACEHOLDER_TEXT;
+}
+
+// ---------------------------------------------------------------
+// Persistencia de las diapositivas en sí (IndexedDB): así, aunque cierres
+// la pestaña o el navegador, cada estudiante/grupo conserva su material y
+// su posición al volver a entrar — no hace falta volver a elegir la carpeta.
+// (Los archivos originales en disco nunca se tocan; esto es solo una copia
+// que el navegador guarda para poder mostrarla de nuevo sin pedirla otra vez.)
+// ---------------------------------------------------------------
+const DECKDB_NAME = 'presentador_decks_db';
+const DECKDB_VERSION = 1;
+const DECKDB_STORE = 'decks';
+const DECKDB_POS_STORE = 'positions';
+let _deckDbPromise = null;
+
+function openDeckDB(){
+  if(!('indexedDB' in window)) return Promise.reject(new Error('IndexedDB no disponible'));
+  if(_deckDbPromise) return _deckDbPromise;
+  _deckDbPromise = new Promise((resolve, reject)=>{
+    const req = indexedDB.open(DECKDB_NAME, DECKDB_VERSION);
+    req.onupgradeneeded = ()=>{
+      const db = req.result;
+      if(!db.objectStoreNames.contains(DECKDB_STORE)) db.createObjectStore(DECKDB_STORE, { keyPath: 'studentId' });
+      if(!db.objectStoreNames.contains(DECKDB_POS_STORE)) db.createObjectStore(DECKDB_POS_STORE, { keyPath: 'studentId' });
+    };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+  return _deckDbPromise;
+}
+
+async function saveDeckToDB(studentId, levelKey, slidesForDb){
+  try{
+    const db = await openDeckDB();
+    await new Promise((resolve, reject)=>{
+      const tx = db.transaction(DECKDB_STORE, 'readwrite');
+      tx.objectStore(DECKDB_STORE).put({ studentId, levelKey, slides: slidesForDb });
+      tx.oncomplete = resolve;
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }catch(err){
+    console.error('No se pudo guardar el material de forma permanente (IndexedDB):', err);
+  }
+}
+
+async function loadDeckFromDB(studentId){
+  try{
+    const db = await openDeckDB();
+    return await new Promise((resolve, reject)=>{
+      const tx = db.transaction(DECKDB_STORE, 'readonly');
+      const req = tx.objectStore(DECKDB_STORE).get(studentId);
+      req.onsuccess = ()=> resolve(req.result || null);
+      req.onerror = ()=> reject(req.error);
+    });
+  }catch(err){ console.error('No se pudo leer el material guardado:', err); return null; }
+}
+
+async function deleteDeckFromDB(studentId){
+  try{
+    const db = await openDeckDB();
+    await new Promise((resolve, reject)=>{
+      const tx = db.transaction(DECKDB_STORE, 'readwrite');
+      tx.objectStore(DECKDB_STORE).delete(studentId);
+      tx.oncomplete = resolve;
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }catch(err){ console.error('No se pudo borrar el material guardado:', err); }
+}
+
+async function savePositionToDB(studentId, currentIndex){
+  try{
+    const db = await openDeckDB();
+    await new Promise((resolve, reject)=>{
+      const tx = db.transaction(DECKDB_POS_STORE, 'readwrite');
+      tx.objectStore(DECKDB_POS_STORE).put({ studentId, currentIndex });
+      tx.oncomplete = resolve;
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }catch(err){ console.error('No se pudo guardar la posición:', err); }
+}
+
+async function loadPositionFromDB(studentId){
+  try{
+    const db = await openDeckDB();
+    return await new Promise((resolve, reject)=>{
+      const tx = db.transaction(DECKDB_POS_STORE, 'readonly');
+      const req = tx.objectStore(DECKDB_POS_STORE).get(studentId);
+      req.onsuccess = ()=> resolve(req.result ? req.result.currentIndex : 0);
+      req.onerror = ()=> reject(req.error);
+    });
+  }catch(err){ return 0; }
+}
+
+async function deletePositionFromDB(studentId){
+  try{
+    const db = await openDeckDB();
+    await new Promise((resolve, reject)=>{
+      const tx = db.transaction(DECKDB_POS_STORE, 'readwrite');
+      tx.objectStore(DECKDB_POS_STORE).delete(studentId);
+      tx.oncomplete = resolve;
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }catch(err){ /* no pasa nada, no es crítico */ }
+}
+
+// Convierte los slides "en vivo" (con blob URLs, que dejan de servir tras recargar la página)
+// a una forma guardable: el archivo original (Blob) para imagen/video, o el dataURL ya generado para páginas de PDF.
+function slidesToDbForm(liveSlides){
+  return liveSlides.map(s => ({
+    name: s.name,
+    type: s.type,
+    sourceFile: s.sourceFile,
+    media: s.originalFile || s.url, // Blob del archivo original, o dataURL (páginas de PDF) si no hay Blob
+    thumb: s.thumb || null
+  }));
+}
+
+// Reconstruye slides "en vivo" a partir de lo guardado en IndexedDB (crea URLs de objeto nuevas para los Blobs)
+function slidesFromDbForm(dbSlides){
+  return dbSlides.map(s => {
+    const isBlob = s.media instanceof Blob;
+    return {
+      name: s.name,
+      type: s.type,
+      sourceFile: s.sourceFile,
+      url: isBlob ? URL.createObjectURL(s.media) : s.media,
+      originalFile: isBlob ? s.media : undefined,
+      thumb: s.thumb || undefined
+    };
+  });
+}
+
+function naturalCompare(a,b){
+  return a.localeCompare(b, undefined, {numeric:true, sensitivity:'base'});
+}
+
+function videoThumbnail(url){
+  return new Promise((resolve)=>{
+    const v = document.createElement('video');
+    v.src = url; v.muted = true; v.playsInline = true;
+    v.addEventListener('loadeddata', ()=>{ try{ v.currentTime = Math.min(0.5, (v.duration||1)/4); }catch(e){ finish(); } });
+    v.addEventListener('seeked', finish);
+    v.addEventListener('error', ()=> resolve(null));
+    function finish(){
+      try{
+        const c = document.createElement('canvas');
+        c.width = v.videoWidth || 320; c.height = v.videoHeight || 180;
+        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/png'));
+      }catch(e){ resolve(null); }
+    }
+    setTimeout(()=> resolve(null), 4000); // por si el video no carga a tiempo
+  });
+}
+
+async function renderPdfPages(file){
+  if (typeof pdfjsLib === 'undefined') {
+    throw new Error('No se pudo cargar el motor de PDF (pdf.js). Revisa tu conexión a internet e intenta de nuevo.');
+  }
+  if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+  const urls = [];
+  for(let p=1; p<=pdf.numPages; p++){
+    const page = await pdf.getPage(p);
+    const viewport = page.getViewport({scale: 2});
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width; canvas.height = viewport.height;
+    await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
+    urls.push(canvas.toDataURL('image/png'));
+  }
+  return urls;
+}
+
+// appendMode=false (carpeta): reemplaza todo el set actual por el contenido de la carpeta elegida.
+// appendMode=true (archivos sueltos): se unen al set que ya esté cargado, sin borrar nada de lo anterior.
+async function processFiles(fileList, levelKeyOverride, appendMode){
+  const files = Array.from(fileList).filter(f=> /\.(png|jpe?g|gif|webp|bmp|pdf|mp4|webm|mov|m4v|mp3|wav|ogg|m4a|aac)$/i.test(f.name));
+  if(files.length === 0){ alert('No encontré imágenes, PDF, video ni audio ahí.'); return; }
+  files.sort((a,b)=> naturalCompare(a.name, b.name));
+
+  if(!(appendMode && currentLevelKey)){
+    const relPath = files[0].webkitRelativePath || files[0].name;
+    currentLevelKey = levelKeyOverride || relPath.split('/')[0] || 'Diapositivas';
+  }
+
+  document.getElementById('loadingMsg').style.display = '';
+  document.getElementById('levelLabel').textContent = '';
+
+  const newBatch = [];
+  for(const f of files){
+    if(/\.pdf$/i.test(f.name)){
+      try{
+        const pages = await renderPdfPages(f);
+        pages.forEach((url, idx)=> newBatch.push({ name: f.name + (pages.length>1 ? ' (pág '+(idx+1)+'/'+pages.length+')' : ''), url, type:'image', sourceFile: f.name }));
+      }catch(err){
+        console.error('Error leyendo PDF', f.name, err);
+        alert('No se pudo leer "' + f.name + '": ' + err.message);
+      }
+    } else if(/\.(mp4|webm|mov|m4v)$/i.test(f.name)){
+      const url = URL.createObjectURL(f);
+      const thumb = await videoThumbnail(url);
+      newBatch.push({ name: f.name, url, thumb, type:'video', sourceFile: f.name, originalFile: f });
+    } else if(/\.(mp3|wav|ogg|m4a|aac)$/i.test(f.name)){
+      newBatch.push({ name: f.name, url: URL.createObjectURL(f), type:'audio', sourceFile: f.name, originalFile: f });
+    } else {
+      newBatch.push({ name: f.name, url: URL.createObjectURL(f), type:'image', sourceFile: f.name, originalFile: f });
+    }
+  }
+
+  document.getElementById('loadingMsg').style.display = 'none';
+
+  if(appendMode && currentLevelKey){
+    // Unir con lo que ya había cargado, sin perder nada y SIN reordenar lo existente:
+    // los archivos nuevos se agregan al final, en el orden en que se eligieron.
+    // (Si quieres cambiarles el orden después, puedes arrastrar las miniaturas.)
+    const existingNames = new Set(slides.map(s => s.name));
+    const uniqueNewBatch = newBatch.filter(s => !existingNames.has(s.name));
+    slides = slides.concat(uniqueNewBatch);
+    if(currentIndex < 0) currentIndex = 0;
+  } else {
+    slides = newBatch;
+    currentIndex = 0;
+  }
+
+  document.getElementById('levelLabel').textContent = '📁 ' + currentLevelKey + ' · ' + slides.length + ' diapositivas';
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('stage').style.display = '';
+  document.getElementById('btnRemoveDeck').style.display = '';
+  renderThumbs();
+  showSlide(currentIndex);
+
+  // Si hay un estudiante/grupo activo, esta carga queda guardada como SU propio set — no se comparte con otros
+  const activeId = document.getElementById('activeStudent').value;
+  if(activeId){
+    studentDecks[activeId] = { slides, currentIndex, levelKey: currentLevelKey };
+    // Guardado permanente: aunque cierres la app y vuelvas a entrar, este estudiante conserva su material.
+    saveDeckToDB(activeId, currentLevelKey, slidesToDbForm(slides));
+    savePositionToDB(activeId, currentIndex);
+  }
+}
+
+// Ir directo al Presentador con las diapositivas propias de este estudiante/grupo
+function presentToStudent(id){
+  document.querySelector('.tab-btn[data-view="presentador"]').click();
+  document.getElementById('activeStudent').value = id;
+  switchToStudentDeck(id);
+}
+
+// Cambia el set de diapositivas activo al que le corresponde a este estudiante/grupo (cada uno tiene el suyo, independiente)
+async function switchToStudentDeck(id){
+  const s = DATA.students.find(x=>x.id===id);
+  if(!s) return;
+  if(studentDecks[id]){
+    const d = studentDecks[id];
+    slides = d.slides;
+    currentLevelKey = d.levelKey;
+    document.getElementById('levelLabel').textContent = '📁 ' + currentLevelKey + ' · ' + slides.length + ' diapositivas';
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('stage').style.display = '';
+    document.getElementById('btnRemoveDeck').style.display = '';
+    renderThumbs();
+    showSlide(d.currentIndex || 0); // retoma exactamente donde se había quedado con este estudiante/grupo
+    return;
+  }
+
+  // No está en la memoria de ESTA sesión (por ejemplo, acabas de reabrir la app):
+  // antes de dejar la pantalla en blanco, intentamos recuperar su material guardado permanentemente.
+  document.getElementById('thumbs').innerHTML = '';
+  document.getElementById('stage').style.display = 'none';
+  document.getElementById('btnRemoveDeck').style.display = 'none';
+  document.getElementById('levelLabel').textContent = '';
+  document.getElementById('slideCounter').textContent = '0 / 0';
+  document.getElementById('placeholder').style.display = '';
+  document.getElementById('placeholder').textContent = 'Buscando el material guardado de ' + s.nombre + '...';
+
+  const stored = await loadDeckFromDB(id);
+
+  // Puede que mientras esperábamos la respuesta de IndexedDB, el usuario ya haya cambiado a otro estudiante:
+  // si ya no es el activo, no pisamos su pantalla con datos de este.
+  if(document.getElementById('activeStudent').value !== id) return;
+
+  if(stored && stored.slides && stored.slides.length){
+    const restoredSlides = slidesFromDbForm(stored.slides);
+    const savedIndex = await loadPositionFromDB(id);
+    if(document.getElementById('activeStudent').value !== id) return; // mismo chequeo, tras el segundo await
+    slides = restoredSlides;
+    currentLevelKey = stored.levelKey;
+    studentDecks[id] = { slides: restoredSlides, currentIndex: savedIndex || 0, levelKey: stored.levelKey };
+    document.getElementById('levelLabel').textContent = '📁 ' + currentLevelKey + ' · ' + slides.length + ' diapositivas';
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('stage').style.display = '';
+    document.getElementById('btnRemoveDeck').style.display = '';
+    renderThumbs();
+    showSlide(Math.min(savedIndex || 0, slides.length - 1));
+  } else {
+    // Tampoco hay nada guardado: pantalla en blanco de verdad, sin abrir ningún selector automáticamente.
+    // Es el usuario quien decide cargar la carpeta o los archivos que quiera.
+    slides = [];
+    currentIndex = -1;
+    currentLevelKey = '';
+    document.getElementById('placeholder').textContent = placeholderTextFor(id);
+    loadSlideNotes();
+  }
+}
+
+const folderInput = document.getElementById('folderInput');
+document.getElementById('btnPickFolder').addEventListener('click', ()=> folderInput.click());
+folderInput.addEventListener('change', (e)=>{
+  // "Elegir carpeta" siempre reemplaza el set completo: es una carga nueva y deliberada.
+  const override = pendingLevelKeyForFolder;
+  pendingLevelKeyForFolder = null;
+  processFiles(e.target.files, override || undefined, false);
+  e.target.value='';
+});
+
+const filesInput = document.getElementById('filesInput');
+document.getElementById('btnPickFiles').addEventListener('click', ()=> filesInput.click());
+filesInput.addEventListener('change', (e)=>{
+  // "Elegir archivos" (imagen/PDF/video sueltos) se UNE a lo que ya esté cargado, no lo reemplaza.
+  // Solo se pregunta el nombre del grupo si todavía no hay nada cargado (deck nuevo desde cero).
+  let label;
+  if(currentLevelKey){
+    label = currentLevelKey;
+  } else {
+    label = pendingLevelKeyForFolder || prompt('¿Qué nombre le pones a este grupo de diapositivas? (ej: A1, Fonética, Listening 4)', 'Diapositivas') || 'Diapositivas';
+  }
+  pendingLevelKeyForFolder = null;
+  processFiles(e.target.files, label, true);
+  e.target.value = '';
+});
+
+let dragSrcIndex = null; // índice de la miniatura que se está arrastrando para reordenar
+
+function renderThumbs(){
+  const wrap = document.getElementById('thumbs');
+  wrap.innerHTML = '';
+  slides.forEach((s, i)=>{
+    const div = document.createElement('div');
+    div.className = 'thumb' + (i===currentIndex ? ' current' : '');
+    div.draggable = true;
+    div.title = 'Arrastra para cambiar el orden';
+    div.dataset.name = s.name;
+    const activeId = document.getElementById('activeStudent').value;
+    const seen = activeId && DATA.progress[activeId] && DATA.progress[activeId].seenSlides[currentLevelKey] && DATA.progress[activeId].seenSlides[currentLevelKey].includes(s.name);
+    let mediaHtml;
+    if(s.type === 'audio'){
+      mediaHtml = '<div class="audioThumb">🎧</div>';
+    } else {
+      const thumbSrc = s.type==='video' ? (s.thumb || '') : s.url;
+      mediaHtml = (thumbSrc ? `<img src="${thumbSrc}">` : `<img>`) + (s.type==='video' ? '<span class="playicon">▶</span>' : '');
+    }
+    div.innerHTML = mediaHtml +
+      `<span class="idx">${i+1}</span>` + (seen ? '<span class="seen">✓</span>' : '') +
+      `<span class="delSlide" title="Quitar esta diapositiva">✕</span>`;
+    div.addEventListener('click', ()=> showSlide(i));
+    div.querySelector('.delSlide').addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      deleteSlide(i);
+    });
+
+    // Arrastrar y soltar para reordenar las diapositivas a tu gusto
+    div.addEventListener('dragstart', (ev)=>{
+      dragSrcIndex = i;
+      ev.dataTransfer.effectAllowed = 'move';
+      try{ ev.dataTransfer.setData('text/plain', String(i)); }catch(err){}
+      setTimeout(()=> div.classList.add('dragging'), 0);
+    });
+    div.addEventListener('dragend', ()=>{
+      div.classList.remove('dragging');
+      document.querySelectorAll('#thumbs .thumb').forEach(t=> t.classList.remove('drag-over-top','drag-over-bottom'));
+      dragSrcIndex = null;
+    });
+    div.addEventListener('dragover', (ev)=>{
+      if(dragSrcIndex === null) return;
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = 'move';
+      const rect = div.getBoundingClientRect();
+      const before = (ev.clientY - rect.top) < rect.height / 2;
+      div.classList.toggle('drag-over-top', before);
+      div.classList.toggle('drag-over-bottom', !before);
+    });
+    div.addEventListener('dragleave', ()=>{
+      div.classList.remove('drag-over-top','drag-over-bottom');
+    });
+    div.addEventListener('drop', (ev)=>{
+      ev.preventDefault();
+      const rect = div.getBoundingClientRect();
+      const before = (ev.clientY - rect.top) < rect.height / 2;
+      div.classList.remove('drag-over-top','drag-over-bottom');
+      if(dragSrcIndex === null || dragSrcIndex === i){ dragSrcIndex = null; return; }
+      reorderSlide(dragSrcIndex, i, before);
+      dragSrcIndex = null;
+    });
+
+    wrap.appendChild(div);
+  });
+}
+
+// Cambia el orden de las diapositivas arrastrando una encima (antes) o debajo (después) de otra.
+// El orden nuevo queda guardado igual que el resto del deck (memoria de la sesión + IndexedDB permanente).
+function reorderSlide(fromIndex, targetIndex, insertBefore){
+  if(fromIndex<0 || fromIndex>=slides.length || targetIndex<0 || targetIndex>=slides.length) return;
+  const currentName = (currentIndex >= 0 && slides[currentIndex]) ? slides[currentIndex].name : null;
+
+  const moved = slides.splice(fromIndex, 1)[0];
+  let insertAt = targetIndex > fromIndex ? targetIndex - 1 : targetIndex;
+  if(!insertBefore) insertAt += 1;
+  insertAt = Math.max(0, Math.min(insertAt, slides.length));
+  slides.splice(insertAt, 0, moved);
+
+  if(currentName) currentIndex = slides.findIndex(s => s.name === currentName);
+
+  const activeId = document.getElementById('activeStudent').value;
+  if(activeId && studentDecks[activeId]){
+    studentDecks[activeId].slides = slides;
+    studentDecks[activeId].currentIndex = currentIndex;
+    saveDeckToDB(activeId, currentLevelKey, slidesToDbForm(slides));
+    savePositionToDB(activeId, currentIndex);
+  }
+  renderThumbs();
+  document.getElementById('slideCounter').textContent = (currentIndex + 1) + ' / ' + slides.length;
+}
+
+// Quitar una diapositiva puntual de la presentación actual (no borra el archivo original en el disco)
+function deleteSlide(index){
+  if(index<0 || index>=slides.length) return;
+  const target = slides[index];
+  // Si el archivo original (p.ej. un PDF de varias páginas) generó más de una diapositiva,
+  // se quitan todas sus páginas juntas: para el usuario es "un" archivo, no páginas sueltas.
+  const groupIndexes = slides.reduce((acc, s, i) => {
+    if(target.sourceFile && s.sourceFile === target.sourceFile) acc.push(i);
+    return acc;
+  }, []);
+  const isGroup = groupIndexes.length > 1;
+  const displayName = target.sourceFile || target.name;
+  const msg = isGroup
+    ? '¿Quitar "' + displayName + '" (' + groupIndexes.length + ' páginas) de esta presentación? No se borra tu archivo original, solo se saca de esta sesión.'
+    : '¿Quitar "' + displayName + '" de esta presentación? No se borra tu archivo original, solo se saca de esta sesión.';
+  if(!confirm(msg)) return;
+
+  const removedNames = groupIndexes.map(i => slides[i].name);
+  const firstRemovedIndex = groupIndexes[0];
+  slides = slides.filter((s, i) => !groupIndexes.includes(i));
+
+  if(DATA.deckNotes[currentLevelKey]){
+    removedNames.forEach(n => delete DATA.deckNotes[currentLevelKey][n]);
+    saveData();
+  }
+  const activeId = document.getElementById('activeStudent').value;
+  if(activeId && studentDecks[activeId]) studentDecks[activeId].slides = slides;
+
+  if(slides.length === 0){ resetCurrentDeck(); return; }
+
+  if(activeId){
+    // Refleja el borrado también en el material guardado permanentemente
+    saveDeckToDB(activeId, currentLevelKey, slidesToDbForm(slides));
+  }
+
+  let newIndex = currentIndex;
+  if(firstRemovedIndex < currentIndex) newIndex = Math.max(0, currentIndex - groupIndexes.length);
+  else if(groupIndexes.includes(currentIndex)) newIndex = Math.min(firstRemovedIndex, slides.length - 1);
+  document.getElementById('levelLabel').textContent = '📁 ' + currentLevelKey + ' · ' + slides.length + ' diapositivas';
+  renderThumbs();
+  showSlide(newIndex);
+}
+
+// Quitar TODA la carpeta/set de diapositivas actual (no borra los archivos originales)
+function resetCurrentDeck(){
+  slides = [];
+  currentIndex = -1;
+  const activeId = document.getElementById('activeStudent').value;
+  if(activeId){
+    delete studentDecks[activeId];
+    deleteDeckFromDB(activeId);
+    deletePositionFromDB(activeId);
+  }
+  currentLevelKey = '';
+  document.getElementById('levelLabel').textContent = '';
+  document.getElementById('thumbs').innerHTML = '';
+  document.getElementById('stage').style.display = 'none';
+  document.getElementById('placeholder').style.display = '';
+  document.getElementById('placeholder').textContent = placeholderTextFor(activeId);
+  document.getElementById('slideCounter').textContent = '0 / 0';
+  document.getElementById('btnRemoveDeck').style.display = 'none';
+  loadSlideNotes();
+}
+
+document.getElementById('btnRemoveDeck').addEventListener('click', ()=>{
+  if(slides.length === 0) return;
+  const activeId = document.getElementById('activeStudent').value;
+  const s = activeId ? DATA.students.find(x=>x.id===activeId) : null;
+  const who = s ? (' de ' + s.nombre) : '';
+  if(!confirm('¿Quitar todas las diapositivas cargadas' + who + '? La próxima vez tendrás que volver a elegir la carpeta. No se borran tus archivos originales.')) return;
+  resetCurrentDeck();
+});
+
+function activeMediaEl(){
+  const s = slides[currentIndex];
+  if(s && s.type === 'video') return document.getElementById('slideVideo');
+  if(s && s.type === 'audio') return null; // el audio no tiene superficie visual para anotar
+  return document.getElementById('slideImg');
+}
+
+function showSlide(i){
+  if(i<0 || i>=slides.length) return;
+  currentIndex = i;
+  const s = slides[i];
+  const img = document.getElementById('slideImg');
+  const vid = document.getElementById('slideVideo');
+  const audioWrap = document.getElementById('audioSlideWrap');
+  const audioEl = document.getElementById('slideAudio');
+  audioEl.pause();
+  if(s.type === 'video'){
+    vid.pause(); vid.src = s.url; vid.style.display = ''; img.style.display = 'none'; audioWrap.style.display = 'none';
+    vid.onloadedmetadata = ()=>{ resizeCanvas(); clearAnnotation(); };
+  } else if(s.type === 'audio'){
+    vid.pause(); vid.src = ''; vid.style.display = 'none'; img.style.display = 'none'; audioWrap.style.display = '';
+    audioEl.src = s.url;
+    document.getElementById('audioFileName').textContent = s.name;
+    clearAnnotation(); // no hay superficie visual que anotar en un audio
+  } else {
+    vid.pause(); vid.src = ''; vid.style.display = 'none'; img.style.display = ''; audioWrap.style.display = 'none';
+    img.src = s.url;
+    img.onload = ()=>{ resizeCanvas(); clearAnnotation(); };
+  }
+  document.getElementById('slideCounter').textContent = (i+1) + ' / ' + slides.length;
+  document.querySelectorAll('#thumbs .thumb').forEach((t,idx)=> t.classList.toggle('current', idx===i));
+  const el = document.querySelectorAll('#thumbs .thumb')[i];
+  if(el) el.scrollIntoView({block:'nearest'});
+  maybeMarkSeen();
+  loadSlideNotes();
+  // Recordar en qué diapositiva se quedó este estudiante/grupo específico (en memoria y de forma permanente)
+  const activeId = document.getElementById('activeStudent').value;
+  if(activeId && studentDecks[activeId]){
+    studentDecks[activeId].currentIndex = i;
+    savePositionToDB(activeId, i);
+  }
+}
+
+document.getElementById('btnPrev').addEventListener('click', ()=> showSlide(currentIndex-1));
+document.getElementById('btnNext').addEventListener('click', ()=> showSlide(currentIndex+1));
+document.addEventListener('keydown', (e)=>{
+  if(!document.getElementById('view-presentador').classList.contains('active')) return;
+  if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) return;
+  if(e.key === 'ArrowRight') showSlide(currentIndex+1);
+  if(e.key === 'ArrowLeft') showSlide(currentIndex-1);
+});
+
+// Pantalla completa
+document.getElementById('btnFullscreen').addEventListener('click', ()=>{
+  const stage = document.getElementById('stage-wrap');
+  if(!document.fullscreenElement) stage.requestFullscreen().catch(()=>{});
+  else document.exitFullscreen();
+});
+
+// ---------------------------------------------------------------
+// Cronómetro de la clase: discreto a propósito. Empieza oculto (solo el ícono),
+// y sigue contando en segundo plano aunque lo ocultes — así el alumno nunca
+// tiene por qué ver un reloj corriendo y sentir presión.
+// ---------------------------------------------------------------
+let timerSeconds = 0;
+let timerRunning = false;
+let timerInterval = null;
+function formatTimer(total){
+  const m = Math.floor(total/60).toString().padStart(2,'0');
+  const s = (total%60).toString().padStart(2,'0');
+  return m + ':' + s;
+}
+function updateTimerDisplay(){
+  document.getElementById('timerDisplay').textContent = formatTimer(timerSeconds);
+}
+document.getElementById('timerToggle').addEventListener('click', ()=>{
+  timerRunning = !timerRunning;
+  document.getElementById('timerToggle').textContent = timerRunning ? '⏸' : '▶';
+  document.getElementById('timerToggle').title = timerRunning ? 'Pausar' : 'Iniciar';
+  if(timerRunning){
+    timerInterval = setInterval(()=>{ timerSeconds++; updateTimerDisplay(); }, 1000);
+  } else {
+    clearInterval(timerInterval);
+  }
+});
+document.getElementById('timerReset').addEventListener('click', ()=>{
+  timerSeconds = 0;
+  updateTimerDisplay();
+});
+document.getElementById('timerEye').addEventListener('click', ()=>{
+  const wrap = document.getElementById('classTimer');
+  const nowHidden = wrap.classList.toggle('timer-hidden');
+  document.getElementById('timerEye').textContent = nowHidden ? '🙈' : '🙉';
+});
+
+// Lupa
+const lens = document.getElementById('lens');
+let lupaActive = false;
+document.getElementById('chkLupa').addEventListener('change', (e)=>{ lupaActive = e.target.checked; if(!lupaActive) lens.style.display='none'; });
+document.getElementById('stage-wrap').addEventListener('mousemove', (e)=>{
+  if(!lupaActive || currentIndex<0 || (slides[currentIndex] && slides[currentIndex].type!=='image')) { lens.style.display='none'; return; }
+  const img = document.getElementById('slideImg');
+  const rect = img.getBoundingClientRect();
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+  if(x<0||y<0||x>rect.width||y>rect.height){ lens.style.display='none'; return; }
+  const zoom = 2.5;
+  lens.style.display = 'block';
+  lens.style.left = (e.clientX - lens.offsetWidth/2) + 'px';
+  lens.style.top = (e.clientY - lens.offsetHeight/2) + 'px';
+  lens.style.backgroundImage = `url(${img.src})`;
+  lens.style.backgroundSize = (rect.width*zoom) + 'px ' + (rect.height*zoom) + 'px';
+  lens.style.backgroundPosition = `-${x*zoom - lens.offsetWidth/2}px -${y*zoom - lens.offsetHeight/2}px`;
+});
+document.getElementById('stage-wrap').addEventListener('mouseleave', ()=> lens.style.display='none');
+
+// Anotación (pizarra que se limpia por diapositiva)
+const annCanvas = document.getElementById('annCanvas');
+const annCtx = annCanvas.getContext('2d');
+let penActive = false, drawing = false, penColor = '#e5484d';
+document.getElementById('chkPen').addEventListener('change', e=>{
+  penActive = e.target.checked;
+  annCanvas.style.pointerEvents = penActive ? 'auto' : 'none';
+});
+document.querySelectorAll('.swatch').forEach(sw=>{
+  sw.addEventListener('click', ()=>{
+    document.querySelectorAll('.swatch').forEach(s=>s.classList.remove('active'));
+    sw.classList.add('active');
+    penColor = sw.dataset.color;
+  });
+});
+document.getElementById('btnClearAnn').addEventListener('click', clearAnnotation);
+function clearAnnotation(){ annCtx.clearRect(0,0,annCanvas.width, annCanvas.height); }
+function resizeCanvas(){
+  const media = activeMediaEl();
+  if(!media){ annCanvas.width = 0; annCanvas.height = 0; return; } // p.ej. una diapositiva de audio, sin superficie que anotar
+  annCanvas.width = media.clientWidth;
+  annCanvas.height = media.clientHeight;
+  annCanvas.style.width = media.clientWidth + 'px';
+  annCanvas.style.height = media.clientHeight + 'px';
+}
+window.addEventListener('resize', resizeCanvas);
+annCanvas.addEventListener('mousedown', (e)=>{
+  if(!penActive) return;
+  drawing = true;
+  const r = annCanvas.getBoundingClientRect();
+  annCtx.beginPath();
+  annCtx.moveTo(e.clientX-r.left, e.clientY-r.top);
+});
+annCanvas.addEventListener('mousemove', (e)=>{
+  if(!drawing) return;
+  const r = annCanvas.getBoundingClientRect();
+  annCtx.lineTo(e.clientX-r.left, e.clientY-r.top);
+  annCtx.strokeStyle = penColor;
+  annCtx.lineWidth = 3;
+  annCtx.lineCap = 'round';
+  annCtx.stroke();
+});
+window.addEventListener('mouseup', ()=> drawing = false);
+
+// Marcar diapositiva como vista para el estudiante/grupo activo
+function maybeMarkSeen(){
+  const chk = document.getElementById('chkMarkSeen');
+  const studentId = document.getElementById('activeStudent').value;
+  if(!chk.checked || !studentId || currentIndex<0) return;
+  const prog = ensureProgress(studentId);
+  if(!prog.seenSlides[currentLevelKey]) prog.seenSlides[currentLevelKey] = [];
+  const name = slides[currentIndex].name;
+  if(!prog.seenSlides[currentLevelKey].includes(name)) prog.seenSlides[currentLevelKey].push(name);
+  saveData();
+  renderThumbs();
+}
+document.getElementById('activeStudent').addEventListener('change', (e)=>{
+  if(e.target.value) switchToStudentDeck(e.target.value);
+  renderThumbs();
+});
+
+// Notas de la diapositiva (por nivel + nombre de archivo)
+function loadSlideNotes(){
+  const ta = document.getElementById('slideNotes');
+  document.getElementById('wordLookupBar').classList.remove('show');
+  document.getElementById('wordLookupPopover').classList.remove('show');
+  if(currentIndex<0){ ta.value=''; ta.disabled = true; return; }
+  ta.disabled = false;
+  const name = slides[currentIndex].name;
+  ta.value = (DATA.deckNotes[currentLevelKey] && DATA.deckNotes[currentLevelKey][name]) || '';
+}
+let notesSaveTimer = null;
+document.getElementById('slideNotes').addEventListener('input', (e)=>{
+  if(currentIndex<0) return;
+  const name = slides[currentIndex].name;
+  clearTimeout(notesSaveTimer);
+  notesSaveTimer = setTimeout(()=>{
+    if(!DATA.deckNotes[currentLevelKey]) DATA.deckNotes[currentLevelKey] = {};
+    DATA.deckNotes[currentLevelKey][name] = e.target.value;
+    saveData();
+  }, 300);
+});
+
+// ---------------------------------------------------------------
+// Buscar significado al instante (selecciona una palabra en las notas)
+// ---------------------------------------------------------------
+const wordLookupCache = {}; // cache en memoria: word -> {translation, defs}
+const slideNotesEl2 = document.getElementById('slideNotes');
+const lookupBar = document.getElementById('wordLookupBar');
+const lookupTermEl = document.getElementById('wordLookupTerm');
+const lookupPopover = document.getElementById('wordLookupPopover');
+const lookupContent = document.getElementById('wordLookupContent');
+let currentSelectedWord = '';
+
+function updateLookupBar(){
+  const start = slideNotesEl2.selectionStart, end = slideNotesEl2.selectionEnd;
+  const text = slideNotesEl2.value.substring(start, end).trim();
+  if(text && text.length <= 40 && text.split(/\s+/).length <= 5){
+    currentSelectedWord = text;
+    lookupTermEl.textContent = '"' + text + '"';
+    lookupBar.classList.add('show');
+  } else {
+    lookupBar.classList.remove('show');
+    currentSelectedWord = '';
+  }
+}
+slideNotesEl2.addEventListener('select', updateLookupBar);
+slideNotesEl2.addEventListener('mouseup', updateLookupBar);
+slideNotesEl2.addEventListener('keyup', updateLookupBar);
+slideNotesEl2.addEventListener('keydown', (e)=>{
+  if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='d' && currentSelectedWord){
+    e.preventDefault();
+    lookupWord(currentSelectedWord);
+  }
+});
+document.getElementById('wordLookupBtn').addEventListener('click', ()=> lookupWord(currentSelectedWord));
+document.getElementById('wordLookupClose').addEventListener('click', ()=> lookupPopover.classList.remove('show'));
+
+let lastLookupWord = '';
+let lastLookupEnglishTerm = '';
+
+async function detectLanguage(text){
+  try{
+    const res = await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=' + encodeURIComponent(text));
+    if(res.ok){
+      const data = await res.json();
+      return (data && data[2]) ? data[2] : null;
+    }
+  }catch(e){}
+  return null;
+}
+
+async function translateWordWithAlternates(word, targetLang){
+  targetLang = targetLang || 'es';
+  try{
+    const res = await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=' + targetLang + '&dt=t&dt=bd&q=' + encodeURIComponent(word));
+    if(res.ok){
+      const data = await res.json();
+      const simple = (data[0] || []).map(chunk => (chunk && chunk[0]) ? chunk[0] : '').join('').trim();
+      const dict = data[1]; // entradas de diccionario por categoría gramatical
+      if(Array.isArray(dict) && dict.length){
+        const isPhrasal = t => /^(de|del|para|en|con|sin|al?)\s/i.test(t); // ej. "de agua" — evitar como significado principal
+        const corePos = ['noun','verb'];
+        let main = null;
+        const collected = []; // un término representativo por categoría, en el orden que da Google
+
+        dict.forEach(entry=>{
+          const pos = (entry && entry[0] || '').toLowerCase();
+          const terms = entry && entry[1];
+          if(!Array.isArray(terms) || !terms.length) return;
+          const rep = terms.find(t => t && !isPhrasal(t)) || terms[0];
+          if(rep) collected.push(rep);
+          if(!main && corePos.includes(pos) && rep && !isPhrasal(rep)){
+            main = rep;
+          }
+        });
+        if(!main && collected.length) main = collected[0];
+
+        if(main){
+          const seen = new Set([main]);
+          const alternates = [];
+          collected.forEach(t=>{ if(!seen.has(t)){ seen.add(t); alternates.push(t); } });
+          dict.forEach(entry=>{
+            const terms = entry && entry[1];
+            if(Array.isArray(terms)) terms.forEach(t=>{ if(t && !seen.has(t)){ seen.add(t); alternates.push(t); } });
+          });
+          return { main, alternates: alternates.slice(0,6) };
+        }
+      }
+      if(simple) return { main: simple, alternates: [] };
+    }
+  }catch(e){ console.warn('Google Translate (modo diccionario) falló', e); }
+  return null;
+}
+
+async function lookupWord(word){
+  if(!word) return;
+  lastLookupWord = word;
+  lastLookupEnglishTerm = word;
+  lookupPopover.classList.add('show');
+  lookupContent.innerHTML = '<div class="loading">🔎 Buscando "' + word + '"...</div>';
+
+  if(wordLookupCache[word.toLowerCase()]){
+    const cached = wordLookupCache[word.toLowerCase()];
+    lastLookupEnglishTerm = cached.direction === 'es-en' ? (cached.translation || word) : word;
+    renderLookupResult(word, cached);
+    return;
+  }
+
+  const result = { translation: null, alternates: [], defs: null, direction: 'en-es' };
+  try{
+    const detected = await detectLanguage(word);
+    const isSpanish = detected === 'es';
+    result.direction = isSpanish ? 'es-en' : 'en-es';
+    const targetLang = isSpanish ? 'en' : 'es';
+
+    if(!isSpanish){
+      // "word" ya es inglés — podemos pedir traducción y definición al mismo tiempo
+      const [transRes, dictRes] = await Promise.allSettled([
+        translateWordWithAlternates(word, targetLang),
+        fetch('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(word)).then(r=> r.ok ? r.json() : null),
+      ]);
+      if(transRes.status === 'fulfilled' && transRes.value){
+        result.translation = transRes.value.main;
+        result.alternates = transRes.value.alternates || [];
+      }
+      if(dictRes.status === 'fulfilled' && dictRes.value){
+        result.defs = dictRes.value;
+      }
+      lastLookupEnglishTerm = word;
+    } else {
+      // "word" es español — primero necesitamos su traducción al inglés antes de poder buscar la definición
+      const transResult = await translateWordWithAlternates(word, targetLang);
+      if(transResult){
+        result.translation = transResult.main;
+        result.alternates = transResult.alternates || [];
+      }
+      lastLookupEnglishTerm = result.translation || word;
+      if(result.translation){
+        try{
+          const dictRes2 = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(result.translation));
+          if(dictRes2.ok) result.defs = await dictRes2.json();
+        }catch(e){}
+      }
+    }
+  }catch(err){
+    console.error('Error buscando significado', err);
+  }
+
+  // Si el modo diccionario no dio nada, probamos la traducción simple (con su propio respaldo) como último recurso
+  if(!result.translation){
+    const fallback = await translateText(word);
+    if(fallback) result.translation = fallback;
+  }
+
+  if(!result.translation && !result.defs){
+    lookupContent.innerHTML =
+      '<div class="term" id="lookupTermRow" style="display:flex;align-items:center;gap:8px;">' + word + pronounceIconHtml() + '<span id="cefrBadge"></span></div>' +
+      pronounceButtonsHtml() +
+      '<div class="errmsg">No se pudo buscar la definición (revisa tu conexión a internet), pero igual puedes escuchar la pronunciación arriba.</div>' +
+      fallbackLinksHtml(word);
+    fetchAndShowCefrLevel(lastLookupEnglishTerm);
+    return;
+  }
+
+  wordLookupCache[word.toLowerCase()] = result;
+  renderLookupResult(word, result);
+}
+
+function fallbackLinksHtml(word){
+  const q = encodeURIComponent(word);
+  return '<div class="fallback-links">' +
+    '<a href="https://www.wordreference.com/es/translation.asp?tranword=' + q + '" target="_blank" rel="noopener">Ver en WordReference ↗</a>' +
+    '<a href="https://translate.google.com/?sl=auto&tl=es&text=' + q + '" target="_blank" rel="noopener">Ver en Google Translate ↗</a>' +
+    '</div>';
+}
+
+// ---- Pronunciación (reutiliza la selección de voz de Ejercicios) ----
+function speakLookupText(rate){
+  const text = lastLookupEnglishTerm || lastLookupWord;
+  if(!text) return;
+  if(!('speechSynthesis' in window)){ alert('Tu navegador no soporta lectura de voz (Text-to-Speech).'); return; }
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = 'en-US';
+  utter.rate = rate || 0.9;
+  const voice = (typeof pickBestExVoice === 'function') ? pickBestExVoice() : null;
+  if(voice) utter.voice = voice;
+  window.speechSynthesis.speak(utter);
+}
+function pronounceIconHtml(){
+  return '<button class="btn small" style="padding:2px 7px;font-size:13px;" onclick="speakLookupText(0.85)" title="Escuchar pronunciación">🔊</button>';
+}
+function pronounceButtonsHtml(){
+  return '<div style="display:flex;gap:8px;margin:8px 0 10px;">' +
+    '<button class="btn small" onclick="speakLookupText(0.75)">🔊 Normal</button>' +
+    '<button class="btn small" onclick="speakLookupText(1.35)">🔊 Fluido</button>' +
+    '</div>';
+}
+
+let LOOKUP_TEXTS = [];
+let LOOKUP_ALTERNATES = [];
+const lookupTranslateCache = {};
+
+async function translateText(text){
+  if(!text) return null;
+  // Intento 1: Google Translate (endpoint no oficial)
+  try{
+    const res = await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=es&dt=t&q=' + encodeURIComponent(text));
+    if(res.ok){
+      const data = await res.json();
+      const joined = (data[0] || []).map(chunk => (chunk && chunk[0]) ? chunk[0] : '').join('');
+      if(joined.trim()) return joined;
+    }
+  }catch(e){ console.warn('Google Translate falló, probando alternativa…', e); }
+
+  // Intento 2 (respaldo): MyMemory, otro servicio gratuito sin API key
+  try{
+    const res2 = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=en|es');
+    if(res2.ok){
+      const data2 = await res2.json();
+      const translated = data2 && data2.responseData && data2.responseData.translatedText;
+      const quality = data2 && data2.responseData && data2.responseData.match!=null ? Number(data2.responseData.match) : 1;
+      // MyMemory a veces empareja palabras sueltas cortas con entradas ruidosas de bases técnicas/médicas.
+      // Solo aceptamos el resultado si la coincidencia es razonablemente confiable.
+      if(translated && quality >= 0.6 && !/\bNOS\b/i.test(translated)) return translated;
+
+      // Si la coincidencia principal no es confiable, buscamos entre las alternativas una mejor.
+      if(Array.isArray(data2 && data2.matches)){
+        const best = data2.matches
+          .filter(m => m.translation && Number(m.match) >= 0.6 && !/\bNOS\b/i.test(m.translation))
+          .sort((a,b)=> Number(b.match) - Number(a.match))[0];
+        if(best) return best.translation;
+      }
+    }
+  }catch(e){ console.warn('El respaldo de traducción también falló', e); }
+
+  return null;
+}
+
+async function toggleTranslation(btn, idx){
+  const text = LOOKUP_TEXTS[idx];
+  if(!text) return;
+  const existing = btn.parentElement.querySelector('.translation-inline[data-idx="'+idx+'"]');
+  if(existing){
+    existing.style.display = existing.style.display === 'none' ? '' : 'none';
+    return;
+  }
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '…';
+  let translated = lookupTranslateCache[text];
+  if(!translated){
+    translated = await translateText(text);
+    if(translated) lookupTranslateCache[text] = translated;
+  }
+  btn.disabled = false;
+  btn.textContent = original;
+  const div = document.createElement('div');
+  div.className = 'translation-inline';
+  div.dataset.idx = idx;
+  div.style.cssText = 'color:var(--accent2);font-size:12px;margin:2px 0 6px;font-style:italic;';
+  div.textContent = translated || '(no se pudo traducir)';
+  btn.parentElement.appendChild(div);
+}
+
+function selectAlternateMeaning(idx){
+  const newValue = LOOKUP_ALTERNATES[idx];
+  if(!newValue || !lastLookupWord) return;
+  const cacheEntry = wordLookupCache[lastLookupWord.toLowerCase()];
+  if(!cacheEntry) return;
+  const oldValue = cacheEntry.translation;
+  const newAlternates = cacheEntry.alternates.filter((a,i)=> i!==idx);
+  if(oldValue && !newAlternates.includes(oldValue)) newAlternates.unshift(oldValue);
+  cacheEntry.translation = newValue;
+  cacheEntry.alternates = newAlternates;
+
+  const isReverse = cacheEntry.direction === 'es-en';
+  lastLookupEnglishTerm = isReverse ? newValue : lastLookupWord;
+
+  renderLookupResult(lastLookupWord, cacheEntry);
+
+  const englishWord = isReverse ? newValue : lastLookupWord;
+  const spanishMeaning = isReverse ? lastLookupWord : newValue;
+  fetchExampleForMeaning(englishWord, spanishMeaning);
+}
+
+async function fetchExampleForMeaning(word, meaning){
+  const exBox = document.getElementById('meaningExampleBox');
+  if(!exBox) return;
+  if(!AI_SETTINGS.deepseekKey){
+    exBox.innerHTML = 'Configura tu API key en Ejercicios para generar un ejemplo de este significado.';
+    return;
+  }
+  exBox.innerHTML = 'Generando ejemplo…';
+  try{
+    const prompt = `The English word "${word}" can be translated to Spanish as "${meaning}" in one of its senses.
+Write ONE short, natural example sentence in English that uses "${word}" specifically in the sense matching the Spanish translation "${meaning}".
+Respond with ONLY the example sentence, nothing else — no quotes around it, no explanation, no translation.`;
+    const res = await callAI([{role:'user', content: prompt}], 80);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const example = (data.choices?.[0]?.message?.content || '').trim();
+    const box = document.getElementById('meaningExampleBox');
+    if(!box) return;
+    if(example){
+      const exIdx = LOOKUP_TEXTS.push(example) - 1;
+      box.innerHTML = 'Ej: "' + example + '" <button class="lookup-translate-btn" onclick="toggleTranslation(this,' + exIdx + ')" title="Ver traducción">🌐</button>';
+    } else {
+      box.textContent = '';
+    }
+  }catch(e){
+    const box = document.getElementById('meaningExampleBox');
+    if(box) box.textContent = 'No se pudo generar el ejemplo.';
+  }
+}
+
+function renderLookupResult(word, result){
+  LOOKUP_TEXTS = [];
+  LOOKUP_ALTERNATES = result.alternates || [];
+  let html = '<div class="term" id="lookupTermRow" style="display:flex;align-items:center;gap:8px;">' + word + pronounceIconHtml() + '<span id="cefrBadge"></span></div>';
+  const ipa = result.defs && result.defs[0] &&
+    (result.defs[0].phonetic || (Array.isArray(result.defs[0].phonetics) && (result.defs[0].phonetics.find(p=>p && p.text)||{}).text));
+  if(ipa){
+    html += '<div style="font-size:13px;color:var(--muted);margin:0 0 8px;font-family:\'Courier New\',monospace;">' + ipa + '</div>';
+  }
+  if(result.translation){
+    html += '<div class="translation">' + result.translation + '</div>';
+  }
+  if(LOOKUP_ALTERNATES.length){
+    const altHtml = LOOKUP_ALTERNATES.map((a,i)=>
+      '<span class="lookup-alt" onclick="selectAlternateMeaning(' + i + ')" title="Usar este significado">' + a + '</span>'
+    ).join(', ');
+    html += '<div style="font-size:12px;color:var(--muted);margin:-6px 0 4px;">También: ' + altHtml + '</div>';
+    html += '<div id="meaningExampleBox" style="font-size:12px;color:var(--accent2);font-style:italic;margin:0 0 8px;"></div>';
+  }
+  html += pronounceButtonsHtml();
+  if(result.defs && result.defs[0]){
+    const entry = result.defs[0];
+    html += '<div class="section-label">Definición (inglés)</div>';
+    (entry.meanings || []).slice(0,3).forEach(m=>{
+      const defText = m.definitions[0] ? m.definitions[0].definition : '';
+      const defIdx = LOOKUP_TEXTS.push(defText) - 1;
+      html += '<div class="def"><span class="pos">' + (m.partOfSpeech||'') + '</span>' + defText +
+        ' <button class="lookup-translate-btn" onclick="toggleTranslation(this,' + defIdx + ')" title="Ver traducción">🌐</button></div>';
+      if(m.definitions[0] && m.definitions[0].example){
+        const exText = m.definitions[0].example;
+        const exIdx = LOOKUP_TEXTS.push(exText) - 1;
+        html += '<div class="example">Ej: "' + exText + '" <button class="lookup-translate-btn" onclick="toggleTranslation(this,' + exIdx + ')" title="Ver traducción">🌐</button></div>';
+      }
+    });
+  }
+  html += fallbackLinksHtml(word);
+  lookupContent.innerHTML = html;
+  fetchAndShowCefrLevel(lastLookupEnglishTerm || word);
+}
+
+// ---- Nivel CEFR estimado por IA (opcional, requiere API key de OpenRouter ya configurada) ----
+const cefrLevelCache = {};
+async function estimateCefrLevel(word){
+  if(!AI_SETTINGS.deepseekKey) return null;
+  const cacheKey = word.toLowerCase();
+  if(cefrLevelCache[cacheKey]) return cefrLevelCache[cacheKey];
+  try{
+    const prompt = `What is the CEFR level (A1, A2, B1, B2, C1, or C2) of the English word/phrase "${word}"? Consider its most common everyday meaning.
+If different meanings/senses of this word correspond to clearly different CEFR levels (e.g. a basic everyday sense vs. a specialized/advanced sense), briefly mention that.
+Respond ONLY in this exact plain text format, nothing else, no markdown:
+
+LEVEL: <A1, A2, B1, B2, C1, or C2>
+NOTE: <one short sentence in Spanish explaining the level difference between senses — leave this line empty if all common senses are roughly the same level>`;
+    const res = await callAI([{role:'user', content: prompt}], 150);
+    if(!res.ok) return null;
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || '';
+    const levelMatch = text.match(/LEVEL:\s*(A1|A2|B1|B2|C1|C2)/i);
+    const noteMatch = text.match(/NOTE:\s*(.*)/i);
+    if(!levelMatch) return null;
+    const result = { level: levelMatch[1].toUpperCase(), note: noteMatch ? noteMatch[1].trim() : '' };
+    cefrLevelCache[cacheKey] = result;
+    return result;
+  }catch(e){ console.warn('No se pudo estimar el nivel CEFR', e); return null; }
+}
+
+async function fetchAndShowCefrLevel(word){
+  if(!AI_SETTINGS.deepseekKey) return;
+  const info = await estimateCefrLevel(word);
+  if(lastLookupEnglishTerm !== word) return; // el usuario ya buscó/seleccionó otra cosa mientras tanto
+  const badgeEl = document.getElementById('cefrBadge');
+  const rowEl = document.getElementById('lookupTermRow');
+  if(!badgeEl || !rowEl || !info || !info.level) return;
+  badgeEl.innerHTML = '<span style="background:var(--accent-soft);color:var(--accent2);font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;">' + info.level + '</span>';
+  if(info.note){
+    const noteDiv = document.createElement('div');
+    noteDiv.style.cssText = 'font-size:11px;color:var(--muted);margin:2px 0 8px;font-style:italic;';
+    noteDiv.textContent = info.note;
+    rowEl.insertAdjacentElement('afterend', noteDiv);
+  }
+}
+
+// Paneles colapsables (miniaturas / notas)
+document.getElementById('toggleThumbsTab').addEventListener('click', ()=>{
+  const el = document.getElementById('thumbs');
+  el.classList.toggle('collapsed');
+  document.getElementById('toggleThumbsTab').textContent = el.classList.contains('collapsed') ? '▶' : '◀';
+});
+const notesPanel = document.getElementById('notes-panel');
+document.getElementById('toggleNotesTab').addEventListener('click', ()=>{
+  notesPanel.classList.toggle('collapsed');
+  document.getElementById('toggleNotesTab').textContent = notesPanel.classList.contains('collapsed') ? '◀' : '▶';
+});
+
+// Ancho del panel de notas (arrastrable, a gusto del usuario)
+const NOTES_WIDTH_KEY = 'presentador_notes_width';
+const NOTES_FONT_KEY = 'presentador_notes_fontsize';
+let notesWidth = parseInt(localStorage.getItem(NOTES_WIDTH_KEY) || '280', 10);
+notesPanel.style.width = notesWidth + 'px';
+
+const resizeHandle = document.getElementById('notesResizeHandle');
+let resizingNotes = false, resizeStartX = 0, resizeStartWidth = 0;
+resizeHandle.addEventListener('mousedown', (e)=>{
+  resizingNotes = true;
+  resizeStartX = e.clientX;
+  resizeStartWidth = notesPanel.getBoundingClientRect().width;
+  resizeHandle.classList.add('active');
+  notesPanel.classList.add('resizing');
+  e.preventDefault();
+});
+window.addEventListener('mousemove', (e)=>{
+  if(!resizingNotes) return;
+  const delta = resizeStartX - e.clientX; // arrastrar hacia la izquierda = más ancho
+  const maxWidth = Math.round(window.innerWidth * 0.6);
+  notesWidth = Math.min(maxWidth, Math.max(200, resizeStartWidth + delta));
+  notesPanel.style.width = notesWidth + 'px';
+  resizeCanvas();
+});
+window.addEventListener('mouseup', ()=>{
+  if(!resizingNotes) return;
+  resizingNotes = false;
+  resizeHandle.classList.remove('active');
+  notesPanel.classList.remove('resizing');
+  localStorage.setItem(NOTES_WIDTH_KEY, String(notesWidth));
+});
+
+// Tamaño de letra de las notas (a gusto del usuario)
+const slideNotesEl = document.getElementById('slideNotes');
+let notesFontSize = parseInt(localStorage.getItem(NOTES_FONT_KEY) || '16', 10);
+slideNotesEl.style.fontSize = notesFontSize + 'px';
+function applyNotesFontSize(){
+  slideNotesEl.style.fontSize = notesFontSize + 'px';
+  localStorage.setItem(NOTES_FONT_KEY, String(notesFontSize));
+}
+document.getElementById('notesFontUp').addEventListener('click', ()=>{
+  notesFontSize = Math.min(32, notesFontSize + 2);
+  applyNotesFontSize();
+});
+document.getElementById('notesFontDown').addEventListener('click', ()=>{
+  notesFontSize = Math.max(12, notesFontSize - 2);
+  applyNotesFontSize();
+});
+
+function renderActiveStudentSelect(){
+  const sel = document.getElementById('activeStudent');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— nadie seleccionado —</option>' +
+    DATA.students.map(s=> `<option value="${s.id}">${s.nombre} (${s.nivel})</option>`).join('');
+  if(DATA.students.some(s=>s.id===prev)) sel.value = prev;
+}
+
+// ---------------------------------------------------------------
+// ESTUDIANTES
+// ---------------------------------------------------------------
+let selectedStudentId = null;
+let activeSubtab = 'progreso';
+
+function renderStudentList(){
+  const wrap = document.getElementById('student-list');
+  wrap.innerHTML = '';
+  if(DATA.students.length === 0){
+    wrap.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px;text-align:center;">Aún no has agregado estudiantes ni grupos.</div>';
+  }
+  DATA.students.forEach(s=>{
+    const row = document.createElement('div');
+    row.className = 'student-row' + (s.id===selectedStudentId ? ' active':'');
+    row.innerHTML = `<span class="name">${s.nombre}</span><span class="tag">${s.nivel}</span><span class="tag">${s.tipo==='grupo'?'Grupo':'Individual'}</span><span class="progreso" title="Ver progreso, notas y calificaciones">📊</span><span class="del" title="Eliminar">✕</span>`;
+    row.querySelector('.del').addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      if(confirm('¿Eliminar a "'+s.nombre+'" y todo su progreso? Esto no se puede deshacer.')){
+        DATA.students = DATA.students.filter(x=>x.id!==s.id);
+        delete DATA.progress[s.id];
+        saveData();
+        delete studentDecks[s.id];
+        deleteDeckFromDB(s.id);
+        deletePositionFromDB(s.id);
+        if(selectedStudentId===s.id) selectedStudentId=null;
+        renderStudentList(); renderStudentDetail(selectedStudentId); renderActiveStudentSelect();
+      }
+    });
+    row.querySelector('.progreso').addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      selectedStudentId = s.id;
+      renderStudentList();
+      renderStudentDetail(s.id);
+    });
+    // Un clic en el estudiante/grupo pasa directo al Presentador con sus diapositivas listas
+    row.addEventListener('click', ()=>{
+      selectedStudentId = s.id;
+      renderStudentList();
+      renderStudentDetail(s.id);
+      presentToStudent(s.id);
+    });
+    wrap.appendChild(row);
+  });
+}
+
+function renderStudentDetail(id){
+  const panel = document.getElementById('student-detail');
+  if(!id){ panel.innerHTML = '<div class="empty">Selecciona o crea un estudiante/grupo para ver su progreso.</div>'; return; }
+  const s = DATA.students.find(x=>x.id===id);
+  if(!s){ panel.innerHTML = '<div class="empty">Selecciona o crea un estudiante/grupo para ver su progreso.</div>'; return; }
+  const prog = ensureProgress(id);
+
+  panel.innerHTML = `
+    <h2>${s.nombre}</h2>
+    <div class="meta">${s.tipo==='grupo'?'Grupo':'Estudiante individual'} · Nivel ${s.nivel}
+      <button class="btn small" id="btnEditStudent" style="margin-left:10px;">Editar</button>
+    </div>
+    <div class="subtabs">
+      <button class="subtab-btn" data-sub="progreso">Progreso</button>
+      <button class="subtab-btn" data-sub="notas">Notas</button>
+      <button class="subtab-btn" data-sub="asistencia">Asistencia</button>
+      <button class="subtab-btn" data-sub="calificaciones">Calificaciones</button>
+    </div>
+    <div class="subview" data-sub="progreso"></div>
+    <div class="subview" data-sub="notas"></div>
+    <div class="subview" data-sub="asistencia"></div>
+    <div class="subview" data-sub="calificaciones"></div>
+  `;
+
+  panel.querySelectorAll('.subtab-btn').forEach(b=>{
+    b.addEventListener('click', ()=>{ activeSubtab=b.dataset.sub; refreshSubtabs(panel, s, prog); });
+  });
+  refreshSubtabs(panel, s, prog);
+
+  panel.querySelector('#btnEditStudent').addEventListener('click', ()=> openStudentModal(s));
+}
+
+function refreshSubtabs(panel, s, prog){
+  panel.querySelectorAll('.subtab-btn').forEach(b=> b.classList.toggle('active', b.dataset.sub===activeSubtab));
+  panel.querySelectorAll('.subview').forEach(v=> v.classList.toggle('active', v.dataset.sub===activeSubtab));
+
+  // Progreso
+  const progView = panel.querySelector('.subview[data-sub="progreso"]');
+  const levels = Object.keys(prog.seenSlides);
+  if(levels.length===0){
+    progView.innerHTML = '<div style="color:var(--muted);font-size:13px;">Todavía no hay diapositivas marcadas como vistas para este nivel. Actívalo desde la pestaña Presentador con este estudiante/grupo seleccionado.</div>';
+  } else {
+    progView.innerHTML = levels.map(lvl=>{
+      const seen = prog.seenSlides[lvl];
+      return `<div class="level-group"><h4>${lvl} — ${seen.length} diapositiva(s) vista(s)</h4>` +
+        seen.map(n=>`<span class="slide-chip seen">✓ ${n}</span>`).join('') + `</div>`;
+    }).join('');
+  }
+
+  // Notas
+  const notasView = panel.querySelector('.subview[data-sub="notas"]');
+  notasView.innerHTML = `
+    <div class="row-form">
+      <textarea id="newNoteText" placeholder="Escribe una observación..." style="flex:1;"></textarea>
+      <button class="btn primary" id="btnAddNote">Agregar nota</button>
+    </div>
+    <div id="notesList"></div>
+  `;
+  notasView.querySelector('#btnAddNote').addEventListener('click', ()=>{
+    const txt = notasView.querySelector('#newNoteText').value.trim();
+    if(!txt) return;
+    prog.notes.unshift({date: todayStr(), text: txt});
+    saveData();
+    notasView.querySelector('#newNoteText').value='';
+    renderNotesList();
+  });
+  function renderNotesList(){
+    const list = notasView.querySelector('#notesList');
+    list.innerHTML = prog.notes.length ? '' : '<div style="color:var(--muted);font-size:13px;">Sin notas todavía.</div>';
+    prog.notes.forEach((n, idx)=>{
+      const div = document.createElement('div');
+      div.className = 'list-item';
+      div.innerHTML = `<div><div class="date">${n.date}</div><div>${n.text}</div></div><span class="del">✕</span>`;
+      div.querySelector('.del').addEventListener('click', ()=>{ prog.notes.splice(idx,1); saveData(); renderNotesList(); });
+      list.appendChild(div);
+    });
+  }
+  renderNotesList();
+
+  // Asistencia
+  const asisView = panel.querySelector('.subview[data-sub="asistencia"]');
+  asisView.innerHTML = `
+    <div class="row-form">
+      <input type="date" id="attDate" value="${todayStr()}">
+      <button class="btn" id="btnAttPresente" style="color:var(--good);">✓ Presente</button>
+      <button class="btn" id="btnAttAusente" style="color:var(--danger);">✕ Ausente</button>
+    </div>
+    <div id="attList"></div>
+  `;
+  function addAttendance(present){
+    const date = asisView.querySelector('#attDate').value || todayStr();
+    prog.attendance = prog.attendance.filter(a=>a.date!==date);
+    prog.attendance.unshift({date, present});
+    prog.attendance.sort((a,b)=> b.date.localeCompare(a.date));
+    saveData();
+    renderAttList();
+  }
+  asisView.querySelector('#btnAttPresente').addEventListener('click', ()=> addAttendance(true));
+  asisView.querySelector('#btnAttAusente').addEventListener('click', ()=> addAttendance(false));
+  function renderAttList(){
+    const list = asisView.querySelector('#attList');
+    list.innerHTML = prog.attendance.length ? '' : '<div style="color:var(--muted);font-size:13px;">Sin registros de asistencia todavía.</div>';
+    prog.attendance.forEach((a, idx)=>{
+      const div = document.createElement('div');
+      div.className = 'list-item';
+      div.innerHTML = `<div><span class="date">${a.date}</span> &nbsp; <span class="att-badge ${a.present?'presente':'ausente'}">${a.present?'Presente':'Ausente'}</span></div><span class="del">✕</span>`;
+      div.querySelector('.del').addEventListener('click', ()=>{ prog.attendance.splice(idx,1); saveData(); renderAttList(); });
+      list.appendChild(div);
+    });
+  }
+  renderAttList();
+
+  // Calificaciones
+  const califView = panel.querySelector('.subview[data-sub="calificaciones"]');
+  califView.innerHTML = `
+    <div class="row-form">
+      <input type="text" id="gradeName" placeholder="Evaluación (ej: Examen A1 - Unidad 3)" style="flex:1;">
+      <input type="number" id="gradeScore" placeholder="Nota" style="width:80px;" min="0" max="100">
+      <input type="date" id="gradeDate" value="${todayStr()}">
+      <button class="btn primary" id="btnAddGrade">Agregar</button>
+    </div>
+    <table>
+      <thead><tr><th>Evaluación</th><th>Nota</th><th>Fecha</th><th></th></tr></thead>
+      <tbody id="gradeRows"></tbody>
+    </table>
+  `;
+  califView.querySelector('#btnAddGrade').addEventListener('click', ()=>{
+    const name = califView.querySelector('#gradeName').value.trim();
+    const score = califView.querySelector('#gradeScore').value;
+    const date = califView.querySelector('#gradeDate').value || todayStr();
+    if(!name || score==='') return;
+    prog.grades.unshift({name, score, date});
+    saveData();
+    califView.querySelector('#gradeName').value='';
+    califView.querySelector('#gradeScore').value='';
+    renderGrades();
+  });
+  function renderGrades(){
+    const rows = califView.querySelector('#gradeRows');
+    rows.innerHTML = '';
+    prog.grades.forEach((g, idx)=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${g.name}</td><td>${g.score}</td><td>${g.date}</td><td><span class="del" style="cursor:pointer;color:var(--muted);">✕</span></td>`;
+      tr.querySelector('.del').addEventListener('click', ()=>{ prog.grades.splice(idx,1); saveData(); renderGrades(); });
+      rows.appendChild(tr);
+    });
+  }
+  renderGrades();
+}
+
+// Modal nuevo/editar estudiante
+let editingStudentId = null;
+function openStudentModal(existing){
+  editingStudentId = existing ? existing.id : null;
+  document.getElementById('studentModalTitle').textContent = existing ? 'Editar estudiante / grupo' : 'Nuevo estudiante / grupo';
+  document.getElementById('studentName').value = existing ? existing.nombre : '';
+  document.getElementById('studentType').value = existing ? existing.tipo : 'individual';
+  document.getElementById('studentLevel').value = existing ? existing.nivel : 'A1';
+  document.getElementById('studentModalBg').classList.add('active');
+}
+document.getElementById('btnNewStudent').addEventListener('click', ()=> openStudentModal(null));
+document.getElementById('studentModalCancel').addEventListener('click', ()=> document.getElementById('studentModalBg').classList.remove('active'));
+document.getElementById('studentModalSave').addEventListener('click', ()=>{
+  const nombre = document.getElementById('studentName').value.trim();
+  if(!nombre){ alert('Escribe un nombre.'); return; }
+  const tipo = document.getElementById('studentType').value;
+  const nivel = document.getElementById('studentLevel').value;
+  if(editingStudentId){
+    const s = DATA.students.find(x=>x.id===editingStudentId);
+    s.nombre=nombre; s.tipo=tipo; s.nivel=nivel;
+  } else {
+    const s = {id: uid(), nombre, tipo, nivel};
+    DATA.students.push(s);
+    selectedStudentId = s.id;
+  }
+  saveData();
+  document.getElementById('studentModalBg').classList.remove('active');
+  renderStudentList();
+  renderStudentDetail(selectedStudentId);
+  renderActiveStudentSelect();
+});
+
+// ---------------------------------------------------------------
+// EJERCICIOS (generador con IA)
+// ---------------------------------------------------------------
+const AI_SETTINGS_KEY = 'presentador_ai_settings_v1';
+let AI_SETTINGS = { deepseekKey: '', preferredVoice: '' };
+(function loadAISettings(){
+  try{
+    const raw = localStorage.getItem(AI_SETTINGS_KEY);
+    if(raw) AI_SETTINGS = Object.assign(AI_SETTINGS, JSON.parse(raw));
+  }catch(e){}
+})();
+function saveAISettingsToStorage(){ localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(AI_SETTINGS)); }
+
+const CURRICULUM_TOPICS = {
+  A1: ['Present Continuous','Present Simple','Definite & Indefinite Article','My Daily Routine','Introducing Myself','Pronouns','Daily Routine (extended)','Adverbs of Frequency','Prepositions','Describe Pictures','Clothes / Family'],
+  A2: ['Future Simple','Future Continuous','Future with Going to','Past Simple','Past Continuous','Pronouns','Quantifiers','Modal Verbs','Video Observation & Retelling','Comparative & Superlative Adjectives','Countable & Uncountable Nouns','Free Topic Speaking & Opinion'],
+  B1: ['Present Perfect Simple: Life Experiences','Present Perfect Continuous','Zero/First/Second Conditional','Phrasal Verbs','The Uses of "Get"','Adverbs','Pronunciation of -ED','Slang I','Passive Voice (Present & Past Simple)','Free Topic Speaking & Opinion','Video Observation & Retelling'],
+  B2: ['Past Perfect Simple','Past Perfect Continuous','Future Perfect Simple','Future Perfect Continuous','Reported Speech: Statements and Questions','So vs. Such & Either vs. Neither','Slang II','Third/Mixed Conditional','Passive Voice (All Tenses)','Free Topic Speaking & Opinion','Video Observation & Retelling']
+};
+
+let EX_LEVEL = 'A1';
+let LAST_EXERCISE = null;
+let REFERENCE_TEXT = null;
+
+function exEscapeHtml(str){
+  return String(str==null?'':str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function populateExTopics(){
+  const sel = document.getElementById('exTopic');
+  const topics = CURRICULUM_TOPICS[EX_LEVEL] || [];
+  sel.innerHTML = topics.map(t=>`<option value="${exEscapeHtml(t)}">${exEscapeHtml(t)}</option>`).join('');
+}
+document.querySelectorAll('#exLevelTabs .subtab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#exLevelTabs .subtab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    EX_LEVEL = btn.dataset.level;
+    populateExTopics();
+    LAST_EXERCISE = null;
+    document.getElementById('exOutput').innerHTML = '';
+  });
+});
+populateExTopics();
+
+// ---- Configurar IA (modal) ----
+function maskAIKey(k){
+  if(!k) return '';
+  if(k.length<10) return k;
+  return k.slice(0,6) + '••••••••' + k.slice(-4) + ` (${k.length} caracteres)`;
+}
+function refreshAIKeyStatus(){
+  document.getElementById('aiKeyStatus').textContent = AI_SETTINGS.deepseekKey
+    ? '✅ Key guardada: ' + maskAIKey(AI_SETTINGS.deepseekKey)
+    : '⚠️ Aún no has configurado una API key.';
+}
+document.getElementById('btnAISettings').addEventListener('click', ()=>{
+  document.getElementById('aiApiKey').value = AI_SETTINGS.deepseekKey || '';
+  refreshAIKeyStatus();
+  document.getElementById('aiSettingsModalBg').classList.add('active');
+});
+document.getElementById('aiSettingsCancel').addEventListener('click', ()=> document.getElementById('aiSettingsModalBg').classList.remove('active'));
+document.getElementById('aiSettingsSave').addEventListener('click', ()=>{
+  let v = document.getElementById('aiApiKey').value.trim();
+  v = v.replace(/^["']|["']$/g,'').trim();
+  AI_SETTINGS.deepseekKey = v;
+  saveAISettingsToStorage();
+  refreshAIKeyStatus();
+});
+document.getElementById('btnTestAI').addEventListener('click', async ()=>{
+  const status = document.getElementById('aiKeyStatus');
+  if(!AI_SETTINGS.deepseekKey){ status.textContent = '⚠️ Primero guarda una API key.'; return; }
+  status.textContent = 'Probando conexión con OpenRouter (DeepSeek)…';
+  try{
+    const res = await callAI([{role:'user', content:'Responde solo con la palabra: ok'}], 5);
+    if(res.status===401){ status.textContent = '❌ HTTP 401: la key fue rechazada. Revisa que la copiaste completa.'; return; }
+    if(res.status===402){ status.textContent = '❌ HTTP 402: key válida pero sin saldo en tu cuenta de OpenRouter.'; return; }
+    if(!res.ok){ const t = await res.text(); status.textContent = `❌ Error HTTP ${res.status}: ${t.slice(0,150)}`; return; }
+    const data = await res.json();
+    const reply = data.choices?.[0]?.message?.content || '(sin contenido)';
+    status.textContent = `✅ Conexión exitosa: "${reply.trim()}"`;
+  }catch(e){
+    status.textContent = '❌ No se pudo contactar: ' + e.message;
+  }
+});
+async function callAI(messages, maxTokens){
+  return fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+AI_SETTINGS.deepseekKey},
+    body: JSON.stringify({model:'deepseek/deepseek-chat', messages, max_tokens: maxTokens||400, temperature:0.6})
+  });
+}
+
+// ---- Archivo de referencia (PDF/DOCX) ----
+async function exExtractPdfText(file){
+  if(!window.pdfjsLib) throw new Error('El lector de PDF no cargó — revisa tu conexión a internet.');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+  let text = '';
+  for(let i=1;i<=pdf.numPages;i++){
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(it=>it.str).join(' ') + '\n';
+  }
+  return text;
+}
+async function exExtractDocxText(file){
+  if(!window.mammoth) throw new Error('El lector de Word no cargó — revisa tu conexión a internet.');
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({arrayBuffer});
+  return result.value;
+}
+document.getElementById('exRefFile').addEventListener('change', async (e)=>{
+  const input = e.target;
+  const file = input.files[0];
+  const status = document.getElementById('exRefStatus');
+  if(!file){ REFERENCE_TEXT = null; status.textContent=''; toggleExCountField(); return; }
+  status.textContent = 'Leyendo archivo…';
+  try{
+    let text = '';
+    const name = file.name.toLowerCase();
+    if(name.endsWith('.pdf')) text = await exExtractPdfText(file);
+    else if(name.endsWith('.docx')) text = await exExtractDocxText(file);
+    else { status.textContent = '⚠️ Solo se admite PDF o Word (.docx). Guárdalo como .docx si es un .doc antiguo.'; input.value=''; REFERENCE_TEXT=null; toggleExCountField(); return; }
+    text = text.trim();
+    if(!text){ status.textContent = '⚠️ No se pudo extraer texto (¿está escaneado como imagen?).'; REFERENCE_TEXT=null; toggleExCountField(); return; }
+    REFERENCE_TEXT = text.slice(0,6000);
+    status.textContent = `✅ Archivo leído (${text.length} caracteres). La IA contará cuántos ejercicios trae y generará esa misma cantidad.`;
+    toggleExCountField();
+  }catch(err){
+    status.textContent = '⚠️ No se pudo leer el archivo: ' + err.message;
+    REFERENCE_TEXT = null;
+    toggleExCountField();
+  }
+});
+function toggleExCountField(){
+  const countInput = document.getElementById('exCount');
+  const label = document.getElementById('exCountLabel');
+  countInput.disabled = !!REFERENCE_TEXT;
+  label.textContent = REFERENCE_TEXT ? 'Número de preguntas (se ignora — usa la cantidad del archivo)' : 'Número de preguntas';
+}
+
+// ---- Generar ----
+document.getElementById('btnGenerateEx').addEventListener('click', generateExercise);
+
+function parseExerciseText(text){
+  const blocks = text.split(/PART_START/i).slice(1);
+  const parts = blocks.map(blockRaw=>{
+    const block = blockRaw.split(/PART_END/i)[0];
+    const lines = block.split('\n');
+    let title='', instructions='', script='';
+    let items=[], questions=[], answers=[];
+    let mode = null;
+    lines.forEach(raw=>{
+      const l = raw.trim();
+      if(!l) return;
+      if(/^TITLE:/i.test(l)){ title=l.replace(/^TITLE:/i,'').trim(); mode=null; return; }
+      if(/^INSTRUCTIONS:/i.test(l)){ instructions=l.replace(/^INSTRUCTIONS:/i,'').trim(); mode=null; return; }
+      if(/^SCRIPT:/i.test(l)){ script=l.replace(/^SCRIPT:/i,'').trim(); mode='script'; return; }
+      if(/^ITEMS:/i.test(l)){ mode='items'; return; }
+      if(/^QUESTIONS:/i.test(l)){ mode='questions'; return; }
+      if(/^ANSWERS:/i.test(l)){ mode='answers'; return; }
+      const m = l.match(/^\d+\.\s*(.*)$/);
+      const content = m ? m[1] : l;
+      if(mode==='script'){ script += (script?' ':'') + l; }
+      else if(mode==='items'){ items.push(content); }
+      else if(mode==='questions'){ questions.push(content); }
+      else if(mode==='answers'){ answers.push(content); }
+    });
+    return {title, instructions, script, items, questions, answers};
+  });
+  // Si el modelo no usó el formato de partes por alguna razón, no dejar el resultado vacío
+  return parts.length ? parts : [{title:'', instructions:'', script:'', items:[], questions:[], answers:[]}];
+}
+
+async function generateExercise(){
+  const output = document.getElementById('exOutput');
+  if(!AI_SETTINGS.deepseekKey){
+    output.innerHTML = '<div style="color:var(--muted);font-size:13px;">⚠️ Configura tu API key con el botón "⚙️ Configurar IA" arriba.</div>';
+    return;
+  }
+  const topic = document.getElementById('exTopic').value;
+  if(!topic){ output.innerHTML = '<div style="color:var(--muted);font-size:13px;">Este nivel aún no tiene temas cargados.</div>'; return; }
+  const type = document.getElementById('exType').value;
+  const count = document.getElementById('exCount').value || 8;
+  const extraNotes = (document.getElementById('exNotes').value || '').trim();
+  const btn = document.getElementById('btnGenerateEx');
+  btn.disabled = true; btn.textContent = 'Generando...';
+  output.innerHTML = '<div style="font-size:13px;color:var(--muted);">Generando con IA…</div>';
+
+  const extraNotesSection = extraNotes ? `\n\nAdditional instructions from the teacher — these are the ONLY thing that may override an exact structure match, follow them carefully: ${extraNotes}` : '';
+
+  let prompt;
+  if(type==='grammar'){
+    if(REFERENCE_TEXT){
+      prompt = `You are an English teacher. Below is a sample worksheet for reference.
+
+Carefully analyze its structure first: it may be divided into multiple distinct PARTS (e.g. Part 1, Part 2, etc.), possibly spanning multiple pages, and different parts may use different exercise types (fill-in-the-blank, multiple choice, matching, true/false, sentence transformation, etc.). Identify the EXACT number of parts, their order, the exercise type/instructions of each part, and the exact number of items in each part.
+
+Then create a brand-new worksheet on the topic "${topic}" for a ${EX_LEVEL}-level (CEFR) student that mirrors this EXACT structure: same number of parts, same order, same exercise type per part, same number of items per part. Do NOT copy sentences or content from the sample — everything must be original. Do not merge, skip, reorder, or add parts.${extraNotesSection}
+
+Reference worksheet:
+"""
+${REFERENCE_TEXT}
+"""
+
+Respond ONLY in this exact plain text format, nothing else, no markdown symbols like ** or #:
+
+PART_START
+TITLE: <short title for this part, matching the style/naming of the original, e.g. "Part 1: Fill in the Blanks">
+INSTRUCTIONS: <one short instruction line for the student, matching this part's exercise type>
+ITEMS:
+1. <item text>
+2. <item text>
+(as many items as this part has in the original — no more, no fewer)
+ANSWERS:
+1. <answer>
+2. <answer>
+PART_END
+
+(repeat the full PART_START ... PART_END block once for every part found in the reference material — same total number of parts as the original, in the same order)`;
+    } else {
+      prompt = `You are an English teacher creating a grammar/writing worksheet for a ${EX_LEVEL}-level (CEFR) student, on the topic: "${topic}".
+Create exactly ${count} exercises, using a mix of fill-in-the-blank, multiple choice, and sentence transformation, appropriate for ${EX_LEVEL} level.${extraNotesSection}
+Respond ONLY in this exact plain text format, nothing else, no markdown symbols like ** or #:
+
+PART_START
+TITLE: <a short worksheet title>
+INSTRUCTIONS: <one short instruction line for the student>
+ITEMS:
+1. <exercise text>
+2. <exercise text>
+(continue to exactly ${count} items)
+ANSWERS:
+1. <answer>
+2. <answer>
+(continue to match the items above)
+PART_END`;
+    }
+  } else {
+    if(REFERENCE_TEXT){
+      prompt = `You are an English teacher. Below is a sample listening/comprehension worksheet for reference.
+
+Carefully analyze its structure first: it may be divided into multiple distinct PARTS, possibly spanning multiple pages, each with its own script/dialogue and its own set of comprehension questions. Identify the EXACT number of parts, their order, and the exact number of questions in each part.
+
+Then create a brand-new listening activity on the topic "${topic}" for a ${EX_LEVEL}-level (CEFR) student that mirrors this EXACT structure: same number of parts, same order, same number of questions per part. Each part's script/dialogue must be original, meant to be read aloud by a text-to-speech engine. Do NOT copy content from the sample. Do not merge, skip, reorder, or add parts.${extraNotesSection}
+
+Reference worksheet:
+"""
+${REFERENCE_TEXT}
+"""
+
+Respond ONLY in this exact plain text format, nothing else, no markdown symbols:
+
+PART_START
+TITLE: <short title for this part>
+SCRIPT: <the dialogue or monologue as plain text; use "Speaker A:" / "Speaker B:" labels if it's a dialogue>
+QUESTIONS:
+1. <question>
+2. <question>
+(as many questions as this part has in the original — no more, no fewer)
+ANSWERS:
+1. <answer>
+2. <answer>
+PART_END
+
+(repeat the full PART_START ... PART_END block once for every part found in the reference material — same total number of parts as the original, in the same order)`;
+    } else {
+      prompt = `You are an English teacher creating a listening comprehension activity for a ${EX_LEVEL}-level (CEFR) student, on the topic: "${topic}".
+Write a short dialogue or monologue (length appropriate for ${EX_LEVEL} level) meant to be read aloud by a text-to-speech engine, followed by exactly ${count} comprehension questions.${extraNotesSection}
+Respond ONLY in this exact plain text format, nothing else, no markdown symbols:
+
+PART_START
+TITLE: <a short activity title>
+SCRIPT: <the dialogue or monologue as plain text; use "Speaker A:" / "Speaker B:" labels if it's a dialogue>
+QUESTIONS:
+1. <question>
+2. <question>
+(continue to exactly ${count} questions)
+ANSWERS:
+1. <answer>
+2. <answer>
+PART_END`;
+    }
+  }
+
+  try{
+    const res = await callAI([{role:'user', content: prompt}], REFERENCE_TEXT ? 2600 : 1400);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content?.trim() || '';
+    const parts = parseExerciseText(text);
+    LAST_EXERCISE = { type, topic, level: EX_LEVEL, parts };
+    renderExerciseOutput();
+  }catch(e){
+    output.innerHTML = `<div style="color:var(--danger);font-size:13px;">⚠️ No se pudo generar (${e.message}). Usa "⚙️ Configurar IA" → "Probar conexión" para diagnosticar.</div>`;
+  }finally{
+    btn.disabled = false; btn.textContent = '✨ Generar con IA';
+  }
+}
+
+function renderExerciseOutput(){
+  const ex = LAST_EXERCISE;
+  const output = document.getElementById('exOutput');
+  if(!ex){ output.innerHTML=''; return; }
+  const multi = ex.parts.length > 1;
+  let html = `<div style="border:1px solid var(--border);border-radius:9px;padding:18px;background:var(--panel);">
+    <h3 style="margin:0 0 4px;font-size:16px;">Ejercicio generado</h3>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">${ex.level} · ${exEscapeHtml(ex.topic)}${multi?` · ${ex.parts.length} partes`:''}</p>`;
+
+  ex.parts.forEach((part, idx)=>{
+    if(multi){
+      html += `<h4 style="margin:${idx===0?'0':'22px'} 0 8px;color:var(--accent);font-size:14px;border-top:${idx===0?'none':'1px solid var(--border)'};padding-top:${idx===0?'0':'16px'};">${exEscapeHtml(part.title) || ('Parte ' + (idx+1))}</h4>`;
+    } else if(part.title){
+      html += `<h4 style="margin:0 0 8px;color:var(--accent);font-size:14px;">${exEscapeHtml(part.title)}</h4>`;
+    }
+    if(part.instructions){
+      html += `<p style="font-size:13px;margin:6px 0"><strong>Instrucciones:</strong> ${exEscapeHtml(part.instructions)}</p>`;
+    }
+    if(ex.type==='listening'){
+      if(part.script) html += `<p style="font-size:13px;line-height:1.6;margin:8px 0;">${exEscapeHtml(part.script)}</p>`;
+      const qs = part.questions.length ? part.questions : part.items;
+      if(qs.length) html += `<ol style="font-size:13px;">${qs.map(q=>`<li style="margin-bottom:6px;">${exEscapeHtml(q)}</li>`).join('')}</ol>`;
+    } else {
+      const items = part.items.length ? part.items : part.questions;
+      if(items.length) html += `<ol style="font-size:13px;">${items.map(e=>`<li style="margin-bottom:6px;">${exEscapeHtml(e)}</li>`).join('')}</ol>`;
+    }
+  });
+
+  html += `<details style="margin-top:16px;"><summary style="cursor:pointer;font-weight:700;font-size:13px;">Ver respuestas</summary>`;
+  ex.parts.forEach((part, idx)=>{
+    if(!part.answers.length) return;
+    if(multi) html += `<p style="font-size:12px;font-weight:700;margin:10px 0 4px;">${exEscapeHtml(part.title)||('Parte '+(idx+1))}</p>`;
+    html += `<ol style="font-size:12px;color:var(--muted);">${part.answers.map(a=>`<li>${exEscapeHtml(a)}</li>`).join('')}</ol>`;
+  });
+  html += `</details>`;
+
+  if(ex.type==='listening'){
+    html += `<div class="field" style="max-width:340px;margin-top:14px;">
+      <label>Voz (prueba varias)</label>
+      <select id="exVoiceSelect" onchange="saveExVoiceChoice()" style="width:100%;"></select>
+    </div>
+    <div style="margin:10px 0;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn small" onclick="testExVoice()">🔊 Probar voz</button>
+      <button class="btn primary small" onclick="playExScript()">▶ Reproducir ${multi?'todos los guiones':'el guion'}</button>
+      <button class="btn small" onclick="window.speechSynthesis.cancel()">⏹ Detener</button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-top:10px;">🎧 Los navegadores no permiten generar un archivo .mp3 descargable de forma confiable. Usa "Reproducir" en vivo durante la clase, o graba tu propia voz leyendo el guion si necesitas un archivo real.</p>`;
+  }
+
+  html += `<div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+    <span style="font-size:11px;color:var(--muted);">📝 Las respuestas no se incluyen en el Word — quedan solo aquí, para ti.</span>
+    <div style="display:flex;gap:8px;">
+      <button class="btn small" id="btnSendToPresenter" onclick="sendExerciseToPresentador()">📽️ Enviar al Presentador</button>
+      <button class="btn primary small" onclick="downloadExerciseWord()">⬇ Descargar en Word</button>
+    </div>
+  </div>`;
+
+  html += `</div>`;
+  output.innerHTML = html;
+  if(ex.type==='listening') populateExVoiceSelect();
+}
+
+// ---- Voz (TTS) ----
+let EX_VOICES = [];
+function loadExVoices(){
+  if(!('speechSynthesis' in window)) return;
+  const all = window.speechSynthesis.getVoices();
+  EX_VOICES = all.filter(v=>v.lang && v.lang.toLowerCase().startsWith('en'));
+  if(!EX_VOICES.length) EX_VOICES = all;
+  populateExVoiceSelect();
+}
+if('speechSynthesis' in window){
+  window.speechSynthesis.onvoiceschanged = loadExVoices;
+  loadExVoices();
+}
+function pickBestExVoice(){
+  if(!EX_VOICES.length) return null;
+  const saved = EX_VOICES.find(v=>v.name===AI_SETTINGS.preferredVoice);
+  if(saved) return saved;
+  const googleUS = EX_VOICES.find(v=>/google/i.test(v.name) && /en-us/i.test(v.lang));
+  if(googleUS) return googleUS;
+  const natural = EX_VOICES.find(v=>/natural|neural|online/i.test(v.name));
+  if(natural) return natural;
+  const anyGoogle = EX_VOICES.find(v=>/google/i.test(v.name));
+  if(anyGoogle) return anyGoogle;
+  return EX_VOICES[0];
+}
+function populateExVoiceSelect(){
+  const sel = document.getElementById('exVoiceSelect');
+  if(!sel || !EX_VOICES.length) return;
+  const best = pickBestExVoice();
+  sel.innerHTML = EX_VOICES.map(v=>`<option value="${exEscapeHtml(v.name)}" ${best && v.name===best.name?'selected':''}>${exEscapeHtml(v.name)} (${v.lang})</option>`).join('');
+}
+function saveExVoiceChoice(){
+  const sel = document.getElementById('exVoiceSelect');
+  if(sel && sel.value){ AI_SETTINGS.preferredVoice = sel.value; saveAISettingsToStorage(); }
+}
+function getSelectedExVoice(){
+  const sel = document.getElementById('exVoiceSelect');
+  if(sel && sel.value){ const v = EX_VOICES.find(v=>v.name===sel.value); if(v) return v; }
+  return pickBestExVoice();
+}
+function speakExText(text){
+  if(!('speechSynthesis' in window)){ alert('Tu navegador no soporta lectura de voz (Text-to-Speech).'); return; }
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = 'en-US'; utter.rate = 0.95; utter.pitch = 1;
+  const voice = getSelectedExVoice();
+  if(voice) utter.voice = voice;
+  window.speechSynthesis.speak(utter);
+}
+function testExVoice(){ speakExText('Hello! This is a quick test to see how this voice sounds.'); }
+function playExScript(){
+  if(!LAST_EXERCISE || !LAST_EXERCISE.parts) return;
+  const full = LAST_EXERCISE.parts.map(p=>p.script).filter(Boolean).join('. ... ');
+  if(full) speakExText(full);
+}
+
+// ---- Enviar al Presentador (convierte el ejercicio en diapositivas para el estudiante activo) ----
+async function renderPartToImage(ex, part){
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;background:#fff;padding:50px 60px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;color:#1a2340;';
+  let inner = `<div style="font-size:12px;color:#6b7385;text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:6px;">${exEscapeHtml(ex.level)} · ${exEscapeHtml(ex.topic)}</div>`;
+  inner += `<h1 style="font-size:26px;color:#2F5FEC;margin:0 0 20px;">${exEscapeHtml(part.title || ex.topic)}</h1>`;
+  if(part.instructions) inner += `<p style="font-size:16px;margin:0 0 22px;"><strong>Instructions:</strong> ${exEscapeHtml(part.instructions)}</p>`;
+  if(ex.type==='listening' && part.script){
+    inner += `<div style="background:#eaf0ff;border-radius:8px;padding:16px 20px;margin-bottom:22px;font-size:15px;line-height:1.7;">${exEscapeHtml(part.script)}</div>`;
+  }
+  const items = (part.items && part.items.length) ? part.items : part.questions;
+  inner += '<ol style="font-size:17px;line-height:2.1;padding-left:24px;">' + items.map(it=>`<li>${exEscapeHtml(it)}</li>`).join('') + '</ol>';
+  container.innerHTML = inner;
+  document.body.appendChild(container);
+  try{
+    const canvas = await html2canvas(container, { scale:2, backgroundColor:'#ffffff' });
+    return canvas.toDataURL('image/png');
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+
+async function appendGeneratedSlides(newSlides){
+  const activeId = document.getElementById('activeStudent').value;
+  if(!activeId){ alert('Selecciona primero un estudiante o grupo en "Clase con:" (pestaña Presentador) para saber a quién le pertenece esta diapositiva.'); return; }
+
+  document.querySelector('.tab-btn[data-view="presentador"]').click();
+
+  if(!currentLevelKey) currentLevelKey = 'Ejercicios generados';
+  const existingNames = new Set(slides.map(s => s.name));
+  const uniqueNewBatch = newSlides.filter(s => !existingNames.has(s.name));
+  const jumpTo = slides.length;
+  slides = slides.concat(uniqueNewBatch);
+  if(currentIndex < 0) currentIndex = 0;
+
+  document.getElementById('levelLabel').textContent = '📁 ' + currentLevelKey + ' · ' + slides.length + ' diapositivas';
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('stage').style.display = '';
+  document.getElementById('btnRemoveDeck').style.display = '';
+  renderThumbs();
+  showSlide(uniqueNewBatch.length ? jumpTo : currentIndex);
+
+  studentDecks[activeId] = { slides, currentIndex, levelKey: currentLevelKey };
+  await saveDeckToDB(activeId, currentLevelKey, slidesToDbForm(slides));
+  await savePositionToDB(activeId, currentIndex);
+}
+
+async function sendExerciseToPresentador(){
+  const ex = LAST_EXERCISE;
+  if(!ex) return;
+  if(!document.getElementById('activeStudent').value){
+    alert('Selecciona primero un estudiante o grupo en "Clase con:" (pestaña Presentador) para saber a quién le pertenece esta diapositiva.');
+    return;
+  }
+  if(!window.html2canvas){
+    alert('La herramienta para crear la imagen no cargó — revisa tu conexión a internet e intenta de nuevo.');
+    return;
+  }
+  const btn = document.getElementById('btnSendToPresenter');
+  if(btn){ btn.disabled = true; btn.textContent = 'Enviando...'; }
+  try{
+    const newSlides = [];
+    for(let i=0; i<ex.parts.length; i++){
+      const part = ex.parts[i];
+      const url = await renderPartToImage(ex, part);
+      newSlides.push({
+        name: `Ejercicio - ${part.title || ex.topic} (${Date.now()}_${i})`,
+        url,
+        type: 'image',
+        sourceFile: `Ejercicio: ${ex.topic}`
+      });
+    }
+    await appendGeneratedSlides(newSlides);
+  }catch(err){
+    alert('No se pudo enviar al Presentador: ' + err.message);
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = '📽️ Enviar al Presentador'; }
+  }
+}
+
+// ---- Descarga en Word (.docx armado a mano con JSZip — se abre en Pages, Word y Google Docs) ----
+const DOCX_CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`;
+const DOCX_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`;
+
+function docxEscapeXml(str){
+  return String(str==null?'':str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+}
+// opts: {bold, italic, size (half-points, ej 32 = 16pt), color (hex sin #), after (espacio después, en twips)}
+function docxParagraph(text, opts){
+  opts = opts || {};
+  const runProps = [];
+  if(opts.bold) runProps.push('<w:b/>');
+  if(opts.italic) runProps.push('<w:i/>');
+  if(opts.size) runProps.push(`<w:sz w:val="${opts.size}"/><w:szCs w:val="${opts.size}"/>`);
+  if(opts.color) runProps.push(`<w:color w:val="${opts.color}"/>`);
+  const rPr = runProps.length ? `<w:rPr>${runProps.join('')}</w:rPr>` : '';
+  const pPr = opts.after ? `<w:pPr><w:spacing w:after="${opts.after}"/></w:pPr>` : '';
+  return `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${docxEscapeXml(text)}</w:t></w:r></w:p>`;
+}
+
+async function buildDocxBlob(paragraphsXml){
+  if(!window.JSZip){ throw new Error('La librería para armar el Word no cargó — revisa tu conexión a internet.'); }
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', DOCX_CONTENT_TYPES);
+  zip.folder('_rels').file('.rels', DOCX_RELS);
+  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body>${paragraphsXml.join('')}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body>
+</w:document>`;
+  zip.folder('word').file('document.xml', documentXml);
+  return zip.generateAsync({ type:'blob', mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+
+async function downloadExerciseWord(){
+  const ex = LAST_EXERCISE;
+  if(!ex) return;
+  const BRAND = '2F5FEC';
+  const p = [];
+
+  p.push(docxParagraph(`English Worksheet — ${ex.level}`, { bold:true, size:36, color:BRAND, after:60 }));
+  p.push(docxParagraph(ex.topic, { italic:true, color:'666666', after:240 }));
+
+  ex.parts.forEach((part, idx)=>{
+    if(ex.parts.length>1 || part.title){
+      p.push(docxParagraph(part.title || `Part ${idx+1}`, { bold:true, size:28, color:BRAND, after:120 }));
+    }
+    if(part.instructions) p.push(docxParagraph('Instructions: ' + part.instructions, { after:160 }));
+    if(ex.type==='listening'){
+      if(part.script) p.push(docxParagraph(part.script, { after:200 }));
+      const qs = part.questions.length ? part.questions : part.items;
+      qs.forEach((q,i)=> p.push(docxParagraph(`${i+1}. ${q}`, { after:120 })));
+    } else {
+      const items = part.items.length ? part.items : part.questions;
+      items.forEach((e,i)=> p.push(docxParagraph(`${i+1}. ${e}`, { after:120 })));
+    }
+  });
+
+  try{
+    const blob = await buildDocxBlob(p);
+    const safeName = (ex.parts[0] && ex.parts[0].title || ex.topic || 'Exercise').replace(/[^a-z0-9]+/gi,'_').slice(0,60);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${ex.level}_${safeName}.docx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }catch(err){
+    alert('No se pudo generar el archivo Word: ' + err.message);
+  }
+}
+
+// ---------------------------------------------------------------
+// PIZARRA COLABORATIVA (Firebase Realtime Database)
+// ---------------------------------------------------------------
+const FIREBASE_CONFIG_KEY = 'presentador_firebase_config_v1';
+const WB_LAST_ROOM_KEY = 'presentador_wb_last_room';
+let FIREBASE_CONFIG = null;
+let fbApp = null, fbDb = null;
+let currentRoom = null;
+let roomStrokesRef = null, roomClearedRef = null;
+let sentStrokeKeys = new Set();
+let wbDrawing = false, wbCurrentStroke = null, wbColor = '#e5484d';
+let wbCanvas, wbCtx;
+let wbMode = 'draw'; // 'draw' | 'text'
+let roomTextsRef = null;
+let wbTextEls = {};
+let wbTextSyncTimers = {};
+
+function loadFirebaseConfig(){
+  try{
+    const raw = localStorage.getItem(FIREBASE_CONFIG_KEY);
+    if(raw) FIREBASE_CONFIG = JSON.parse(raw);
+  }catch(e){}
+}
+function saveFirebaseConfig(cfg){
+  FIREBASE_CONFIG = cfg;
+  localStorage.setItem(FIREBASE_CONFIG_KEY, JSON.stringify(cfg));
+}
+function ensureFirebaseInit(){
+  if(!FIREBASE_CONFIG || !FIREBASE_CONFIG.apiKey) return false;
+  if(!fbApp){
+    try{
+      fbApp = firebase.initializeApp(FIREBASE_CONFIG);
+    }catch(e){ /* ya estaba inicializada */ }
+    try{
+      fbDb = firebase.database();
+    }catch(e){ console.error('No se pudo conectar a Firebase', e); return false; }
+  }
+  return true;
+}
+
+function updateWbStatus(msg){
+  const el = document.getElementById('wbStatus');
+  if(el) el.textContent = msg;
+}
+function setWbColor(c){ wbColor = c; }
+
+function setWbMode(mode){
+  wbMode = mode;
+  const bDraw = document.getElementById('btnModeDraw');
+  const bText = document.getElementById('btnModeText');
+  if(mode==='draw'){
+    bDraw.style.background = 'var(--accent)'; bDraw.style.color = '#fff';
+    bText.style.background = ''; bText.style.color = '';
+    wbCanvas.style.cursor = 'crosshair';
+  } else {
+    bText.style.background = 'var(--accent)'; bText.style.color = '#fff';
+    bDraw.style.background = ''; bDraw.style.color = '';
+    wbCanvas.style.cursor = 'text';
+  }
+}
+
+function resizeWbCanvas(){
+  if(!wbCanvas) return;
+  const rect = wbCanvas.parentElement.getBoundingClientRect();
+  if(rect.width===0 || rect.height===0) return;
+  wbCanvas.width = rect.width;
+  wbCanvas.height = rect.height;
+}
+
+function normPoint(x,y,w,h){ return { x: x/w, y: y/h }; }
+
+function drawStrokeOnCanvas(stroke){
+  if(!stroke || !Array.isArray(stroke.points) || stroke.points.length < 2 || !wbCtx) return;
+  wbCtx.beginPath();
+  wbCtx.strokeStyle = stroke.color || '#e5484d';
+  wbCtx.lineWidth = 3;
+  wbCtx.lineCap = 'round';
+  const p0 = stroke.points[0];
+  wbCtx.moveTo(p0.x * wbCanvas.width, p0.y * wbCanvas.height);
+  for(let i=1;i<stroke.points.length;i++){
+    const p = stroke.points[i];
+    wbCtx.lineTo(p.x * wbCanvas.width, p.y * wbCanvas.height);
+  }
+  wbCtx.stroke();
+}
+function clearWbCanvas(){ if(wbCtx && wbCanvas) wbCtx.clearRect(0,0,wbCanvas.width, wbCanvas.height); }
+
+function clearWbTexts(){
+  Object.values(wbTextEls).forEach(el=>el.remove());
+  wbTextEls = {};
+}
+
+function autoGrowTextBox(el){
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+
+function createTextElement(id, xFrac, yFrac, initialText, color){
+  const layer = document.getElementById('wbTextLayer');
+  const el = document.createElement('textarea');
+  el.className = 'wb-text-box';
+  el.rows = 1;
+  el.placeholder = 'Escribe aquí…';
+  el.value = initialText || '';
+  el.style.left = (xFrac*100) + '%';
+  el.style.top = (yFrac*100) + '%';
+  el.style.color = color || wbColor;
+  el.addEventListener('input', ()=>{
+    autoGrowTextBox(el);
+    clearTimeout(wbTextSyncTimers[id]);
+    wbTextSyncTimers[id] = setTimeout(()=>{
+      if(roomTextsRef) roomTextsRef.child(id).update({ text: el.value, updatedAt: Date.now() });
+    }, 200);
+  });
+  el.addEventListener('blur', ()=>{
+    if(!el.value.trim() && roomTextsRef){
+      roomTextsRef.child(id).remove();
+      el.remove();
+      delete wbTextEls[id];
+    }
+  });
+  layer.appendChild(el);
+  wbTextEls[id] = el;
+  autoGrowTextBox(el);
+  return el;
+}
+
+function placeNewTextBox(xFrac, yFrac){
+  if(!roomTextsRef){ alert('Primero entra o crea una sala de pizarra.'); return; }
+  const ref = roomTextsRef.push();
+  const el = createTextElement(ref.key, xFrac, yFrac, '', wbColor);
+  ref.set({ x: xFrac, y: yFrac, text: '', color: wbColor, updatedAt: Date.now() })
+    .catch(err=> updateWbStatus('❌ No se pudo escribir en Firebase: ' + err.message + ' (revisa las Reglas de tu Realtime Database)'));
+  setTimeout(()=> el.focus(), 0);
+}
+
+function joinRoom(roomCode){
+  if(!ensureFirebaseInit()){ alert('Configura primero la Pizarra (botón "⚙️ Configurar Pizarra") con los datos de tu proyecto de Firebase.'); return; }
+  if(roomStrokesRef) roomStrokesRef.off();
+  if(roomClearedRef) roomClearedRef.off();
+  if(roomTextsRef) roomTextsRef.off();
+  currentRoom = roomCode;
+  localStorage.setItem(WB_LAST_ROOM_KEY, roomCode);
+  clearWbCanvas();
+  clearWbTexts();
+  sentStrokeKeys = new Set();
+  roomStrokesRef = fbDb.ref('rooms/' + roomCode + '/strokes');
+  roomClearedRef = fbDb.ref('rooms/' + roomCode + '/clearedAt');
+  roomTextsRef = fbDb.ref('rooms/' + roomCode + '/texts');
+
+  const onErr = (err)=> updateWbStatus('❌ Firebase: ' + err.message + ' — revisa las Reglas de tu Realtime Database (deben permitir leer/escribir en "rooms").');
+
+  roomStrokesRef.on('child_added', snap=>{
+    if(sentStrokeKeys.has(snap.key)) return;
+    drawStrokeOnCanvas(snap.val());
+  }, onErr);
+  roomClearedRef.on('value', ()=>{ clearWbCanvas(); clearWbTexts(); }, onErr);
+
+  roomTextsRef.on('child_added', snap=>{
+    const id = snap.key, data = snap.val();
+    if(wbTextEls[id]) return;
+    createTextElement(id, data.x, data.y, data.text, data.color);
+  }, onErr);
+  roomTextsRef.on('child_changed', snap=>{
+    const id = snap.key, data = snap.val();
+    const el = wbTextEls[id];
+    if(!el){ createTextElement(id, data.x, data.y, data.text, data.color); return; }
+    if(document.activeElement === el) return; // no pisar mientras el usuario local está escribiendo ahí
+    el.value = data.text;
+    autoGrowTextBox(el);
+  }, onErr);
+  roomTextsRef.on('child_removed', snap=>{
+    const id = snap.key;
+    if(wbTextEls[id]){ wbTextEls[id].remove(); delete wbTextEls[id]; }
+  }, onErr);
+
+  // Prueba de escritura inmediata para detectar problemas de permisos apenas se entra a la sala
+  fbDb.ref('rooms/' + roomCode + '/ping').set(Date.now())
+    .then(()=> updateWbStatus('✅ Conectado a la sala "' + roomCode + '" (lectura/escritura OK)'))
+    .catch(err=> updateWbStatus('❌ Sin permiso de escritura: ' + err.message + ' — revisa las Reglas de tu Realtime Database.'));
+}
+
+function sendStroke(stroke){
+  if(!roomStrokesRef) return;
+  const ref = roomStrokesRef.push();
+  sentStrokeKeys.add(ref.key);
+  ref.set({ points: stroke.points, color: stroke.color, ts: Date.now() })
+    .catch(err=> updateWbStatus('❌ No se pudo enviar el trazo: ' + err.message));
+}
+
+function clearRoom(){
+  if(!currentRoom || !fbDb){ alert('Primero entra a una sala.'); return; }
+  if(!confirm('¿Borrar todo lo escrito en la pizarra para todos los conectados?')) return;
+  fbDb.ref('rooms/' + currentRoom + '/strokes').remove();
+  fbDb.ref('rooms/' + currentRoom + '/texts').remove();
+  fbDb.ref('rooms/' + currentRoom + '/clearedAt').set(Date.now());
+}
+
+function initWhiteboardCanvas(canvasEl){
+  wbCanvas = canvasEl;
+  wbCtx = wbCanvas.getContext('2d');
+  resizeWbCanvas();
+  window.addEventListener('resize', resizeWbCanvas);
+
+  function pos(e){
+    const r = wbCanvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  wbCanvas.addEventListener('pointerdown', (e)=>{
+    if(!currentRoom){ alert('Primero entra o crea una sala de pizarra.'); return; }
+    const p = pos(e);
+    if(wbMode === 'text'){
+      placeNewTextBox(p.x/wbCanvas.width, p.y/wbCanvas.height);
+      return;
+    }
+    wbDrawing = true;
+    wbCurrentStroke = { color: wbColor, points: [normPoint(p.x,p.y,wbCanvas.width,wbCanvas.height)] };
+    wbCtx.beginPath();
+    wbCtx.moveTo(p.x, p.y);
+  });
+  wbCanvas.addEventListener('pointermove', (e)=>{
+    if(!wbDrawing) return;
+    const p = pos(e);
+    wbCtx.lineTo(p.x, p.y);
+    wbCtx.strokeStyle = wbColor;
+    wbCtx.lineWidth = 3;
+    wbCtx.lineCap = 'round';
+    wbCtx.stroke();
+    wbCurrentStroke.points.push(normPoint(p.x,p.y,wbCanvas.width,wbCanvas.height));
+  });
+  window.addEventListener('pointerup', ()=>{
+    if(!wbDrawing) return;
+    wbDrawing = false;
+    if(wbCurrentStroke && wbCurrentStroke.points.length>1) sendStroke(wbCurrentStroke);
+    wbCurrentStroke = null;
+  });
+}
+
+// Config modal
+document.getElementById('btnWbConfig').addEventListener('click', ()=>{
+  loadFirebaseConfig();
+  const c = FIREBASE_CONFIG || {};
+  document.getElementById('wbCfgApiKey').value = c.apiKey||'';
+  document.getElementById('wbCfgAuthDomain').value = c.authDomain||'';
+  document.getElementById('wbCfgDbUrl').value = c.databaseURL||'';
+  document.getElementById('wbCfgProjectId').value = c.projectId||'';
+  document.getElementById('wbCfgStorageBucket').value = c.storageBucket||'';
+  document.getElementById('wbCfgSenderId').value = c.messagingSenderId||'';
+  document.getElementById('wbCfgAppId').value = c.appId||'';
+  document.getElementById('wbConfigModalBg').classList.add('active');
+});
+document.getElementById('wbConfigCancel').addEventListener('click', ()=> document.getElementById('wbConfigModalBg').classList.remove('active'));
+document.getElementById('wbConfigSave').addEventListener('click', ()=>{
+  const cfg = {
+    apiKey: document.getElementById('wbCfgApiKey').value.trim(),
+    authDomain: document.getElementById('wbCfgAuthDomain').value.trim(),
+    databaseURL: document.getElementById('wbCfgDbUrl').value.trim(),
+    projectId: document.getElementById('wbCfgProjectId').value.trim(),
+    storageBucket: document.getElementById('wbCfgStorageBucket').value.trim(),
+    messagingSenderId: document.getElementById('wbCfgSenderId').value.trim(),
+    appId: document.getElementById('wbCfgAppId').value.trim(),
+  };
+  saveFirebaseConfig(cfg);
+  document.getElementById('wbConfigModalBg').classList.remove('active');
+  updateWbStatus('Configuración guardada — entra o crea una sala.');
+});
+
+document.getElementById('btnWbJoin').addEventListener('click', ()=>{
+  const code = (document.getElementById('wbRoomInput').value || '').trim();
+  if(!code){ alert('Escribe un código de sala (el que le vayas a compartir a tus alumnos).'); return; }
+  joinRoom(code);
+});
+
+document.getElementById('btnWbShare').addEventListener('click', ()=>{
+  if(!currentRoom){ alert('Primero entra o crea una sala.'); return; }
+  const base = window.location.href.replace(/[^/]*$/, '');
+  const url = base + 'pizarra-alumno.html?room=' + encodeURIComponent(currentRoom);
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(()=>{
+      alert('Link copiado al portapapeles:\n\n' + url + '\n\nPégalo en WhatsApp para tus alumnos.');
+    }).catch(()=>{ prompt('Copia este link para tus alumnos:', url); });
+  } else {
+    prompt('Copia este link para tus alumnos:', url);
+  }
+});
+
+document.getElementById('btnWbClear').addEventListener('click', clearRoom);
+document.getElementById('btnModeDraw').addEventListener('click', ()=> setWbMode('draw'));
+document.getElementById('btnModeText').addEventListener('click', ()=> setWbMode('text'));
+
+loadFirebaseConfig();
+initWhiteboardCanvas(document.getElementById('wbCanvas'));
+(function prefillLastRoom(){
+  const last = localStorage.getItem(WB_LAST_ROOM_KEY);
+  if(last) document.getElementById('wbRoomInput').value = last;
+})();
+
+// ---------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------
+renderActiveStudentSelect();
+renderStudentList();
+</script>
+</body>
+</html>
