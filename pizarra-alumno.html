@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Pizarra — Wediom</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{ --accent:#2F5FEC; --accent-soft:#EAF0FF; --border:#E3E7F0; --muted:#6b7385; --bg:#F4F6FA; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:var(--bg);}
+  #app{display:flex;flex-direction:column;height:100%;}
+  .topbar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fff;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+  .brand{font-weight:800;color:var(--accent);font-size:16px;margin-right:6px;}
+  input{padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;}
+  .btn{border:none;background:var(--accent-soft);color:var(--accent);padding:8px 12px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;}
+  .btn.primary{background:var(--accent);color:#fff;}
+  .swatch{width:24px;height:24px;border-radius:50%;cursor:pointer;border:2px solid #fff;box-shadow:0 0 0 1px var(--border);}
+  #status{font-size:12px;color:var(--muted);margin-left:auto;}
+  #canvasWrap{flex:1;position:relative;background:#e9ecf3;overflow:auto;}
+  #wbZoomWrap{position:relative;transform-origin:0 0;width:2200px;height:1300px;background:#fff;box-shadow:0 0 0 1px var(--border);}
+  #wbCanvas{display:block;width:2200px;height:1300px;touch-action:none;cursor:crosshair;}
+  #joinOverlay{position:absolute;inset:0;background:rgba(244,246,250,.97);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;padding:20px;text-align:center;z-index:10;}
+  #joinOverlay.hidden{display:none;}
+  #joinOverlay input{width:220px;text-align:center;}
+  #modeToggle{display:flex;gap:4px;}
+  .wb-text-wrap{position:absolute;pointer-events:auto;}
+  .wb-text-handle{display:flex;align-items:center;gap:5px;background:rgba(0,0,0,.08);border-radius:4px 4px 0 0;padding:2px 4px;cursor:move;min-width:60px;}
+  .wb-text-drag{color:var(--muted);user-select:none;font-size:12px;cursor:move;}
+  .wb-text-color{width:16px;height:16px;padding:0;border:none;background:none;cursor:pointer;}
+  .wb-text-delete{border:none;background:none;color:#e5484d;font-size:15px;font-weight:800;cursor:pointer;padding:0 3px;margin-left:auto;line-height:1;}
+  .wb-text-box{display:block;min-width:100px;max-width:70%;background:rgba(255,255,255,.85);border:1px dashed rgba(0,0,0,.3);border-top:none;font-size:18px;font-family:inherit;padding:3px 6px;border-radius:0 0 4px 4px;resize:both;overflow:auto;pointer-events:auto;outline:none;line-height:1.3;}
+  .wb-text-box:focus{border-color:var(--accent);border-style:solid;background:#fff;}
+  .wb-media-wrap{position:absolute;pointer-events:auto;}
+  .wb-media-wrap img{width:100%;display:block;border:1px solid rgba(0,0,0,.15);border-radius:4px;cursor:move;}
+  .wb-resize-handle{position:absolute;right:-6px;bottom:-6px;width:14px;height:14px;background:var(--accent);border-radius:3px;cursor:nwse-resize;}
+  .wb-media-delete{position:absolute;top:-8px;left:-8px;width:18px;height:18px;border-radius:50%;background:#e5484d;color:#fff;border:2px solid #fff;font-size:12px;font-weight:800;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
+  .wb-file-card{position:absolute;pointer-events:auto;background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;display:flex;gap:6px;align-items:center;text-decoration:none;color:var(--accent);box-shadow:0 2px 6px rgba(0,0,0,.08);cursor:move;max-width:220px;}
+  .wb-file-card span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .wb-file-card .wb-media-delete{position:static;margin-left:auto;flex-shrink:0;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="topbar">
+    <span class="brand">We<span style="font-weight:600;opacity:.8">diom</span></span>
+    <div id="modeToggle">
+      <button class="btn primary" id="btnModeDraw">✏️</button>
+      <button class="btn" id="btnModeLine">📏</button>
+      <button class="btn" id="btnModeText">🔤</button>
+    </div>
+    <span class="swatch" style="background:#e5484d" onclick="setWbColor('#e5484d')"></span>
+    <span class="swatch" style="background:#f5a524" onclick="setWbColor('#f5a524')"></span>
+    <span class="swatch" style="background:#2F5FEC" onclick="setWbColor('#2F5FEC')"></span>
+    <span class="swatch" style="background:#2ecc71" onclick="setWbColor('#2ecc71')"></span>
+    <button class="btn" id="btnFontMinus" title="Reducir letra">A−</button>
+    <button class="btn" id="btnFontPlus" title="Aumentar letra">A+</button>
+    <button class="btn" id="btnZoomOut" title="Alejar">🔍−</button>
+    <span id="wbZoomLabel" style="font-size:12px;color:var(--muted);min-width:34px;text-align:center;">100%</span>
+    <button class="btn" id="btnZoomIn" title="Acercar">🔍+</button>
+    <button class="btn" id="btnZoomReset" title="Restablecer zoom">↺</button>
+    <input type="file" id="wbFileInput" accept=".png,.jpg,.jpeg,.pdf" style="display:none;">
+    <button class="btn" id="btnWbUpload">📎</button>
+    <select id="wbDownloadFormat" style="width:auto;padding:6px 6px;">
+      <option value="png">PNG</option>
+      <option value="pdf">PDF</option>
+      <option value="docx">Word</option>
+    </select>
+    <button class="btn" id="btnWbDownload" title="Descargar mi pizarra">📥</button>
+    <button class="btn" id="btnWbUndo" disabled title="Deshacer (Ctrl/Cmd+Z)">↩️</button>
+    <button class="btn" id="btnClear">🗑️ Borrar</button>
+    <span id="status">Conectando…</span>
+  </div>
+  <div id="canvasWrap">
+    <div id="wbZoomWrap">
+      <canvas id="wbCanvas"></canvas>
+      <div id="wbTextLayer" style="position:absolute;inset:0;pointer-events:none;"></div>
+    </div>
+    <div id="joinOverlay">
+      <div style="font-weight:800;color:#2F5FEC;font-size:18px;">We<span style="font-weight:600">diom</span> — Pizarra</div>
+      <p style="font-size:13px;color:#6b7385;max-width:280px;">Pide a tu profesor(a) el código de la sala si no se cargó automáticamente.</p>
+      <input id="roomInput" placeholder="Código de sala">
+      <button class="btn primary" id="btnJoin">Entrar</button>
+      <p id="joinError" style="font-size:12px;color:#e5484d;max-width:280px;display:none;"></p>
+    </div>
+  </div>
+</div>
+
+<script>
+let FIREBASE_CONFIG = null;
+let fbApp = null, fbDb = null, fbStorage = null;
+let currentRoom = null;
+let roomStrokesRef = null, roomClearedRef = null, roomTextsRef = null, roomMediaRef = null;
+let sentStrokeKeys = new Set();
+let localStrokesCache = {};
+let wbDrawing = false, wbCurrentStroke = null, wbColor = '#e5484d';
+let wbCanvas, wbCtx;
+let wbMode = 'draw';
+let wbTextEls = {}, wbMediaEls = {};
+let wbTextSyncTimers = {};
+let activeTextId = null;
+
+function setWbColor(c){ wbColor = c; }
+
+const WB_CANVAS_W = 2200, WB_CANVAS_H = 1300;
+
+function setWbMode(mode){
+  wbMode = mode;
+  const bDraw = document.getElementById('btnModeDraw');
+  const bLine = document.getElementById('btnModeLine');
+  const bText = document.getElementById('btnModeText');
+  [bDraw, bLine, bText].forEach(b=> b.classList.remove('primary'));
+  if(mode==='draw'){ bDraw.classList.add('primary'); wbCanvas.style.cursor = 'crosshair'; }
+  else if(mode==='line'){ bLine.classList.add('primary'); wbCanvas.style.cursor = 'crosshair'; }
+  else { bText.classList.add('primary'); wbCanvas.style.cursor = 'text'; }
+}
+
+function resizeWbCanvas(){
+  if(!wbCanvas) return;
+  if(wbCanvas.width !== WB_CANVAS_W || wbCanvas.height !== WB_CANVAS_H){
+    wbCanvas.width = WB_CANVAS_W;
+    wbCanvas.height = WB_CANVAS_H;
+    redrawAllStrokes();
+  }
+}
+window.addEventListener('resize', resizeWbCanvas);
+
+let wbZoom = 1;
+function setZoom(z){
+  wbZoom = Math.max(0.4, Math.min(2.5, z));
+  const zoomWrap = document.getElementById('wbZoomWrap');
+  if(zoomWrap) zoomWrap.style.transform = 'scale(' + wbZoom + ')';
+  const label = document.getElementById('wbZoomLabel');
+  if(label) label.textContent = Math.round(wbZoom*100) + '%';
+}
+
+function normPoint(x,y,w,h){ return { x: x/w, y: y/h }; }
+
+function drawStrokeOnCanvas(stroke){
+  if(!stroke || !Array.isArray(stroke.points) || stroke.points.length < 2 || !wbCtx) return;
+  wbCtx.beginPath();
+  wbCtx.strokeStyle = stroke.color || '#e5484d';
+  wbCtx.lineWidth = 3;
+  wbCtx.lineCap = 'round';
+  const p0 = stroke.points[0];
+  wbCtx.moveTo(p0.x * wbCanvas.width, p0.y * wbCanvas.height);
+  for(let i=1;i<stroke.points.length;i++){
+    const p = stroke.points[i];
+    wbCtx.lineTo(p.x * wbCanvas.width, p.y * wbCanvas.height);
+  }
+  wbCtx.stroke();
+}
+function clearWbCanvas(){ if(wbCtx && wbCanvas) wbCtx.clearRect(0,0,wbCanvas.width, wbCanvas.height); }
+
+function clearWbTexts(){
+  Object.values(wbTextEls).forEach(el=>{ (el._wrap || el).remove(); });
+  wbTextEls = {};
+}
+function autoGrowTextBox(el){
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+function createTextElement(id, xFrac, yFrac, initialText, color, fontSize){
+  const layer = document.getElementById('wbTextLayer');
+  const wrap = document.createElement('div');
+  wrap.className = 'wb-text-wrap';
+  wrap.style.left = (xFrac*100) + '%';
+  wrap.style.top = (yFrac*100) + '%';
+
+  const handle = document.createElement('div');
+  handle.className = 'wb-text-handle';
+  const dragDots = document.createElement('span');
+  dragDots.className = 'wb-text-drag';
+  dragDots.textContent = '⠿';
+  dragDots.title = 'Arrastrar para mover';
+  const colorInput = document.createElement('input');
+  colorInput.type = 'color';
+  colorInput.className = 'wb-text-color';
+  colorInput.value = color || wbColor;
+  colorInput.title = 'Color de la letra';
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'wb-text-delete';
+  delBtn.textContent = '×';
+  delBtn.title = 'Eliminar';
+  handle.appendChild(dragDots);
+  handle.appendChild(colorInput);
+  handle.appendChild(delBtn);
+
+  const el = document.createElement('textarea');
+  el.className = 'wb-text-box';
+  el.rows = 1;
+  el.placeholder = 'Escribe aquí…';
+  el.value = initialText || '';
+  el.style.color = color || wbColor;
+  el.style.fontSize = (fontSize || 18) + 'px';
+
+  wrap.appendChild(handle);
+  wrap.appendChild(el);
+  layer.appendChild(wrap);
+  el._wrap = wrap;
+  el._colorInput = colorInput;
+  if(window.ResizeObserver){
+    const ro = new ResizeObserver(()=>{ handle.style.width = el.offsetWidth + 'px'; });
+    ro.observe(el);
+  } else {
+    handle.style.width = el.offsetWidth + 'px';
+  }
+  wbTextEls[id] = el;
+
+  el.addEventListener('focus', ()=>{ activeTextId = id; });
+  el.addEventListener('input', ()=>{
+    autoGrowTextBox(el);
+    clearTimeout(wbTextSyncTimers[id]);
+    wbTextSyncTimers[id] = setTimeout(()=>{
+      if(roomTextsRef) roomTextsRef.child(id).update({ text: el.value, updatedAt: Date.now() });
+    }, 200);
+  });
+  el.addEventListener('blur', ()=>{
+    if(!el.value.trim() && roomTextsRef){
+      roomTextsRef.child(id).remove();
+      wrap.remove();
+      delete wbTextEls[id];
+    }
+  });
+  colorInput.addEventListener('input', ()=>{
+    el.style.color = colorInput.value;
+    if(roomTextsRef) roomTextsRef.child(id).update({ color: colorInput.value });
+  });
+  delBtn.addEventListener('click', ()=>{
+    pushUndo({ type:'textDelete', id, data: {
+      x: parseFloat(wrap.style.left)/100, y: parseFloat(wrap.style.top)/100,
+      text: el.value, color: el.style.color, fontSize: parseInt(el.style.fontSize)||18
+    }});
+    if(roomTextsRef) roomTextsRef.child(id).remove();
+    wrap.remove();
+    delete wbTextEls[id];
+  });
+
+  makeDraggable(handle, wrap, layer, (x,y)=>{
+    if(roomTextsRef) roomTextsRef.child(id).update({ x, y });
+  });
+
+  autoGrowTextBox(el);
+  return el;
+}
+function changeFontSize(delta){
+  if(!activeTextId || !wbTextEls[activeTextId]) return;
+  const el = wbTextEls[activeTextId];
+  let size = parseInt(el.style.fontSize) || 18;
+  size = Math.max(10, Math.min(48, size + delta));
+  el.style.fontSize = size + 'px';
+  autoGrowTextBox(el);
+  if(roomTextsRef) roomTextsRef.child(activeTextId).update({ fontSize: size });
+}
+function placeNewTextBox(xFrac, yFrac){
+  if(!roomTextsRef) return;
+  const ref = roomTextsRef.push();
+  const el = createTextElement(ref.key, xFrac, yFrac, '', wbColor, 18);
+  ref.set({ x: xFrac, y: yFrac, text: '', color: wbColor, fontSize: 18, updatedAt: Date.now() })
+    .catch(err=> document.getElementById('status').textContent = '❌ Sin permiso de escritura: ' + err.message);
+  setTimeout(()=> el.focus(), 0);
+}
+
+// ---- Archivos (imágenes PNG/JPG y PDF) ----
+function compressImageFile(file, maxSize, quality){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      const img = new Image();
+      img.onload = ()=>{
+        let w = img.width, h = img.height;
+        if(w > h){ if(w > maxSize){ h = Math.round(h*maxSize/w); w = maxSize; } }
+        else { if(h > maxSize){ w = Math.round(w*maxSize/h); h = maxSize; } }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('No se pudo comprimir la imagen')), 'image/jpeg', quality || 0.82);
+      };
+      img.onerror = () => reject(new Error('No se pudo leer la imagen'));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
+}
+function makeDraggable(handleEl, moveEl, layer, onDragEnd){
+  let dragging = false, startX, startY, startLeftPct, startTopPct;
+  handleEl.addEventListener('pointerdown', (e)=>{
+    if(e.target.classList.contains('wb-resize-handle') || e.target.classList.contains('wb-text-color') || e.target.classList.contains('wb-text-delete') || e.target.classList.contains('wb-media-delete')) return;
+    dragging = true;
+    startX = e.clientX; startY = e.clientY;
+    startLeftPct = parseFloat(moveEl.style.left) || 0; startTopPct = parseFloat(moveEl.style.top) || 0;
+    e.stopPropagation();
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', (e)=>{
+    if(!dragging) return;
+    const rect = layer.getBoundingClientRect();
+    moveEl.style.left = (startLeftPct + (e.clientX-startX)/rect.width*100) + '%';
+    moveEl.style.top = (startTopPct + (e.clientY-startY)/rect.height*100) + '%';
+  });
+  window.addEventListener('pointerup', ()=>{
+    if(!dragging) return;
+    dragging = false;
+    onDragEnd(parseFloat(moveEl.style.left)/100, parseFloat(moveEl.style.top)/100);
+  });
+}
+function createImageElement(id, data){
+  const layer = document.getElementById('wbTextLayer');
+  const wrap = document.createElement('div');
+  wrap.className = 'wb-media-wrap';
+  wrap.style.left = (data.x*100) + '%';
+  wrap.style.top = (data.y*100) + '%';
+  wrap.style.width = ((data.w||0.3)*100) + '%';
+  const img = document.createElement('img');
+  img.src = data.url;
+  const handle = document.createElement('div');
+  handle.className = 'wb-resize-handle';
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'wb-media-delete';
+  delBtn.textContent = '×';
+  delBtn.title = 'Eliminar';
+  wrap.appendChild(img);
+  wrap.appendChild(handle);
+  wrap.appendChild(delBtn);
+  layer.appendChild(wrap);
+  wbMediaEls[id] = wrap;
+  makeDraggable(wrap, wrap, layer, (x,y)=>{ if(roomMediaRef) roomMediaRef.child(id).update({ x, y }); });
+  delBtn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    pushUndo({ type:'mediaDelete', id, data: {
+      type:'image', url: data.url, name: data.name,
+      x: parseFloat(wrap.style.left)/100, y: parseFloat(wrap.style.top)/100, w: parseFloat(wrap.style.width)/100
+    }});
+    if(roomMediaRef) roomMediaRef.child(id).remove();
+    wrap.remove();
+    delete wbMediaEls[id];
+  });
+  let resizing = false, resizeStartX, startWidthPct;
+  handle.addEventListener('pointerdown', (e)=>{
+    resizing = true; resizeStartX = e.clientX;
+    startWidthPct = parseFloat(wrap.style.width);
+    e.stopPropagation();
+  });
+  window.addEventListener('pointermove', (e)=>{
+    if(!resizing) return;
+    const rect = layer.getBoundingClientRect();
+    wrap.style.width = Math.max(8, startWidthPct + (e.clientX-resizeStartX)/rect.width*100) + '%';
+  });
+  window.addEventListener('pointerup', ()=>{
+    if(!resizing) return;
+    resizing = false;
+    if(roomMediaRef) roomMediaRef.child(id).update({ w: parseFloat(wrap.style.width)/100 });
+  });
+  return wrap;
+}
+function createFileCard(id, data){
+  const layer = document.getElementById('wbTextLayer');
+  const a = document.createElement('a');
+  a.className = 'wb-file-card';
+  a.href = data.url; a.target = '_blank'; a.rel = 'noopener';
+  a.style.left = (data.x*100) + '%';
+  a.style.top = (data.y*100) + '%';
+  const label = document.createElement('span');
+  label.textContent = '📄 ' + (data.name || 'documento.pdf');
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'wb-media-delete';
+  delBtn.textContent = '×';
+  delBtn.title = 'Eliminar';
+  a.appendChild(label);
+  a.appendChild(delBtn);
+  layer.appendChild(a);
+  wbMediaEls[id] = a;
+  makeDraggable(a, a, layer, (x,y)=>{ if(roomMediaRef) roomMediaRef.child(id).update({ x, y }); });
+  delBtn.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    pushUndo({ type:'mediaDelete', id, data: {
+      type:'file', url: data.url, name: data.name,
+      x: parseFloat(a.style.left)/100, y: parseFloat(a.style.top)/100
+    }});
+    if(roomMediaRef) roomMediaRef.child(id).remove();
+    a.remove();
+    delete wbMediaEls[id];
+  });
+  return a;
+}
+function clearWbMedia(){
+  Object.values(wbMediaEls).forEach(el=>el.remove());
+  wbMediaEls = {};
+}
+async function uploadWbFile(file){
+  if(!currentRoom){ alert('Primero entra a una sala.'); return; }
+  if(!fbStorage){ alert('Firebase Storage no está disponible.'); return; }
+  document.getElementById('status').textContent = 'Subiendo archivo…';
+  try{
+    const isImage = file.type.startsWith('image/');
+    const isPdf = file.type === 'application/pdf';
+    if(!isImage && !isPdf){ alert('Solo se admiten imágenes (PNG/JPG) o PDF.'); return; }
+    const ext = isPdf ? 'pdf' : 'jpg';
+    const path = 'rooms/' + currentRoom + '/uploads/' + Date.now() + '_' + Math.random().toString(36).slice(2,8) + '.' + ext;
+    const storageRef = fbStorage.ref(path);
+    const blobToUpload = isImage ? await compressImageFile(file, 900, 0.82) : file;
+    await storageRef.put(blobToUpload);
+    const url = await storageRef.getDownloadURL();
+    const mediaRef = roomMediaRef.push();
+    await mediaRef.set({ type: isImage ? 'image' : 'file', url, name: file.name, x: 0.1, y: 0.1, w: 0.3, ts: Date.now() });
+    document.getElementById('status').textContent = '✅ Archivo subido';
+  }catch(err){
+    document.getElementById('status').textContent = '❌ No se pudo subir: ' + err.message;
+  }
+}
+
+function joinRoom(roomCode){
+  if(!fbDb){ document.getElementById('status').textContent = '⚠️ No se pudo conectar (revisa tu internet).'; return; }
+  if(roomStrokesRef) roomStrokesRef.off();
+  if(roomClearedRef) roomClearedRef.off();
+  if(roomTextsRef) roomTextsRef.off();
+  if(roomMediaRef) roomMediaRef.off();
+  currentRoom = roomCode;
+  clearWbCanvas();
+  clearWbTexts();
+  clearWbMedia();
+  sentStrokeKeys = new Set();
+  localStrokesCache = {};
+  undoStack = [];
+  updateUndoButtonState();
+  roomStrokesRef = fbDb.ref('rooms/' + roomCode + '/strokes');
+  roomClearedRef = fbDb.ref('rooms/' + roomCode + '/clearedAt');
+  roomTextsRef = fbDb.ref('rooms/' + roomCode + '/texts');
+  roomMediaRef = fbDb.ref('rooms/' + roomCode + '/media');
+
+  const onErr = (err)=> document.getElementById('status').textContent = '❌ Firebase: ' + err.message;
+
+  roomStrokesRef.on('child_added', snap=>{
+    localStrokesCache[snap.key] = snap.val();
+    if(sentStrokeKeys.has(snap.key)) return;
+    drawStrokeOnCanvas(snap.val());
+  }, onErr);
+  roomStrokesRef.on('child_removed', snap=>{
+    delete localStrokesCache[snap.key];
+    redrawAllStrokes();
+  }, onErr);
+  roomClearedRef.on('value', ()=>{ clearWbCanvas(); clearWbTexts(); clearWbMedia(); localStrokesCache = {}; }, onErr);
+
+  roomTextsRef.on('child_added', snap=>{
+    const id = snap.key, data = snap.val();
+    if(wbTextEls[id]) return;
+    createTextElement(id, data.x, data.y, data.text, data.color, data.fontSize);
+  }, onErr);
+  roomTextsRef.on('child_changed', snap=>{
+    const id = snap.key, data = snap.val();
+    const el = wbTextEls[id];
+    if(!el){ createTextElement(id, data.x, data.y, data.text, data.color, data.fontSize); return; }
+    if(data.fontSize) el.style.fontSize = data.fontSize + 'px';
+    if(data.color){ el.style.color = data.color; if(el._colorInput) el._colorInput.value = data.color; }
+    if(el._wrap && document.activeElement !== el){
+      if(typeof data.x === 'number') el._wrap.style.left = (data.x*100) + '%';
+      if(typeof data.y === 'number') el._wrap.style.top = (data.y*100) + '%';
+    }
+    if(document.activeElement === el) return;
+    el.value = data.text;
+    autoGrowTextBox(el);
+  }, onErr);
+  roomTextsRef.on('child_removed', snap=>{
+    const id = snap.key;
+    if(wbTextEls[id]){ (wbTextEls[id]._wrap || wbTextEls[id]).remove(); delete wbTextEls[id]; }
+  }, onErr);
+
+  roomMediaRef.on('child_added', snap=>{
+    const id = snap.key, data = snap.val();
+    if(wbMediaEls[id]) return;
+    if(data.type === 'image') createImageElement(id, data); else createFileCard(id, data);
+  }, onErr);
+  roomMediaRef.on('child_removed', snap=>{
+    const id = snap.key;
+    if(wbMediaEls[id]){ wbMediaEls[id].remove(); delete wbMediaEls[id]; }
+  }, onErr);
+
+  fbDb.ref('rooms/' + roomCode + '/ping').set(Date.now())
+    .then(()=>{
+      document.getElementById('status').textContent = '✅ Conectado a "' + roomCode + '"';
+      document.getElementById('joinOverlay').classList.add('hidden');
+    })
+    .catch(err=>{
+      document.getElementById('status').textContent = '❌ Sin permiso de escritura';
+      const errEl = document.getElementById('joinError');
+      errEl.textContent = '⚠️ No se pudo conectar: ' + err.message + ' — pídele a tu profesor(a) que revise la configuración.';
+      errEl.style.display = 'block';
+    });
+}
+
+function redrawAllStrokes(){
+  clearWbCanvas();
+  Object.values(localStrokesCache).forEach(s => drawStrokeOnCanvas(s));
+}
+
+function sendStroke(stroke){
+  if(!roomStrokesRef) return;
+  const ref = roomStrokesRef.push();
+  sentStrokeKeys.add(ref.key);
+  ref.set({ points: stroke.points, color: stroke.color, ts: Date.now() })
+    .then(()=> pushUndo({ type:'strokeAdd', id: ref.key }))
+    .catch(err=> document.getElementById('status').textContent = '❌ No se pudo enviar el trazo: ' + err.message);
+}
+
+document.getElementById('btnClear').addEventListener('click', ()=>{
+  if(!currentRoom || !fbDb) return;
+  if(!confirm('¿Borrar todo lo escrito en la pizarra para todos?')) return;
+  Promise.all([
+    fbDb.ref('rooms/' + currentRoom + '/strokes').once('value'),
+    fbDb.ref('rooms/' + currentRoom + '/texts').once('value'),
+    fbDb.ref('rooms/' + currentRoom + '/media').once('value'),
+  ]).then(([strokesSnap, textsSnap, mediaSnap])=>{
+    pushUndo({ type:'clearAll', strokes: strokesSnap.val(), texts: textsSnap.val(), media: mediaSnap.val() });
+    fbDb.ref('rooms/' + currentRoom + '/strokes').remove();
+    fbDb.ref('rooms/' + currentRoom + '/texts').remove();
+    fbDb.ref('rooms/' + currentRoom + '/media').remove();
+    fbDb.ref('rooms/' + currentRoom + '/clearedAt').set(Date.now());
+  });
+});
+
+// ---- Deshacer ----
+let undoStack = [];
+const WB_MAX_UNDO = 20;
+function pushUndo(entry){
+  undoStack.push(entry);
+  if(undoStack.length > WB_MAX_UNDO) undoStack.shift();
+  updateUndoButtonState();
+}
+function updateUndoButtonState(){
+  const btn = document.getElementById('btnWbUndo');
+  if(btn) btn.disabled = undoStack.length === 0;
+}
+function undoLast(){
+  const entry = undoStack.pop();
+  updateUndoButtonState();
+  if(!entry){ document.getElementById('status').textContent = 'No hay nada que deshacer.'; return; }
+  if(entry.type === 'strokeAdd'){
+    if(roomStrokesRef) roomStrokesRef.child(entry.id).remove();
+  } else if(entry.type === 'textDelete'){
+    if(roomTextsRef) roomTextsRef.child(entry.id).set(entry.data);
+  } else if(entry.type === 'mediaDelete'){
+    if(roomMediaRef) roomMediaRef.child(entry.id).set(entry.data);
+  } else if(entry.type === 'clearAll'){
+    if(roomStrokesRef) roomStrokesRef.set(entry.strokes || null);
+    if(roomTextsRef) roomTextsRef.set(entry.texts || null);
+    if(roomMediaRef) roomMediaRef.set(entry.media || null);
+  }
+}
+document.getElementById('btnWbUndo').addEventListener('click', undoLast);
+window.addEventListener('keydown', (e)=>{
+  if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z'){
+    if(document.activeElement && document.activeElement.tagName !== 'TEXTAREA'){
+      e.preventDefault();
+      undoLast();
+    }
+  }
+});
+
+document.getElementById('btnModeDraw').addEventListener('click', ()=> setWbMode('draw'));
+document.getElementById('btnModeText').addEventListener('click', ()=> setWbMode('text'));
+document.getElementById('btnFontMinus').addEventListener('click', ()=> changeFontSize(-2));
+document.getElementById('btnFontPlus').addEventListener('click', ()=> changeFontSize(2));
+document.getElementById('btnWbUpload').addEventListener('click', ()=>{
+  if(!currentRoom){ alert('Primero entra a una sala.'); return; }
+  document.getElementById('wbFileInput').click();
+});
+document.getElementById('wbFileInput').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(file) uploadWbFile(file);
+});
+
+function initCanvas(){
+  wbCanvas = document.getElementById('wbCanvas');
+  wbCtx = wbCanvas.getContext('2d');
+  resizeWbCanvas();
+
+  let wbLineStart = null;
+
+  function pos(e){
+    const r = wbCanvas.getBoundingClientRect();
+    const scaleX = wbCanvas.width / r.width;
+    const scaleY = wbCanvas.height / r.height;
+    return { x: (e.clientX - r.left) * scaleX, y: (e.clientY - r.top) * scaleY };
+  }
+  wbCanvas.addEventListener('pointerdown', (e)=>{
+    if(!currentRoom) return;
+    const p = pos(e);
+    if(wbMode === 'text'){
+      placeNewTextBox(p.x/wbCanvas.width, p.y/wbCanvas.height);
+      return;
+    }
+    if(wbMode === 'line'){
+      wbLineStart = p;
+      return;
+    }
+    wbDrawing = true;
+    wbCurrentStroke = { color: wbColor, points: [normPoint(p.x,p.y,wbCanvas.width,wbCanvas.height)] };
+    wbCtx.beginPath();
+    wbCtx.moveTo(p.x, p.y);
+  });
+  wbCanvas.addEventListener('pointermove', (e)=>{
+    if(wbMode === 'line' && wbLineStart){
+      const p = pos(e);
+      redrawAllStrokes();
+      wbCtx.beginPath();
+      wbCtx.strokeStyle = wbColor;
+      wbCtx.lineWidth = 3;
+      wbCtx.lineCap = 'round';
+      wbCtx.moveTo(wbLineStart.x, wbLineStart.y);
+      wbCtx.lineTo(p.x, p.y);
+      wbCtx.stroke();
+      return;
+    }
+    if(!wbDrawing) return;
+    const p = pos(e);
+    wbCtx.lineTo(p.x, p.y);
+    wbCtx.strokeStyle = wbColor;
+    wbCtx.lineWidth = 3;
+    wbCtx.lineCap = 'round';
+    wbCtx.stroke();
+    wbCurrentStroke.points.push(normPoint(p.x,p.y,wbCanvas.width,wbCanvas.height));
+  });
+  window.addEventListener('pointerup', (e)=>{
+    if(wbMode === 'line' && wbLineStart){
+      const p = pos(e);
+      const stroke = { color: wbColor, points: [
+        normPoint(wbLineStart.x, wbLineStart.y, wbCanvas.width, wbCanvas.height),
+        normPoint(p.x, p.y, wbCanvas.width, wbCanvas.height)
+      ]};
+      wbLineStart = null;
+      sendStroke(stroke);
+      return;
+    }
+    if(!wbDrawing) return;
+    wbDrawing = false;
+    if(wbCurrentStroke && wbCurrentStroke.points.length>1) sendStroke(wbCurrentStroke);
+    wbCurrentStroke = null;
+  });
+}
+
+document.getElementById('btnModeLine').addEventListener('click', ()=> setWbMode('line'));
+document.getElementById('btnZoomIn').addEventListener('click', ()=> setZoom(wbZoom + 0.1));
+document.getElementById('btnZoomOut').addEventListener('click', ()=> setZoom(wbZoom - 0.1));
+document.getElementById('btnZoomReset').addEventListener('click', ()=> setZoom(1));
+document.getElementById('btnWbDownload').addEventListener('click', downloadWhiteboardImage);
+
+function triggerFileDownload(url, filename){
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+async function exportCanvasAsPdf(canvas, filenameBase){
+  if(!window.jspdf){ throw new Error('La librería de PDF no cargó — revisa tu conexión a internet.'); }
+  const { jsPDF } = window.jspdf;
+  const imgData = canvas.toDataURL('image/png');
+  const orientation = canvas.width >= canvas.height ? 'l' : 'p';
+  const pdf = new jsPDF(orientation, 'px', [canvas.width, canvas.height]);
+  pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+  pdf.save(filenameBase + '.pdf');
+}
+
+async function exportCanvasAsDocx(canvas, filenameBase){
+  if(!window.JSZip){ throw new Error('La librería para armar el Word no cargó — revisa tu conexión a internet.'); }
+  const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+  const arrayBuffer = await blob.arrayBuffer();
+
+  const EMU_PER_PX = 9525;
+  const MAX_W_EMU = 6800000;
+  let cx = canvas.width * EMU_PER_PX;
+  let cy = canvas.height * EMU_PER_PX;
+  if(cx > MAX_W_EMU){
+    const ratio = MAX_W_EMU / cx;
+    cx = MAX_W_EMU;
+    cy = Math.round(cy * ratio);
+  }
+
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Default Extension="png" ContentType="image/png"/>
+<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`;
+
+  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`;
+
+  const docRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId100" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/>
+</Relationships>`;
+
+  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<w:body>
+<w:p><w:r><w:drawing>
+<wp:inline distT="0" distB="0" distL="0" distR="0">
+<wp:extent cx="${cx}" cy="${cy}"/>
+<wp:docPr id="1" name="Pizarra"/>
+<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>
+<a:graphic>
+<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+<pic:pic>
+<pic:nvPicPr><pic:cNvPr id="0" name="Pizarra"/><pic:cNvPicPr/></pic:nvPicPr>
+<pic:blipFill><a:blip r:embed="rId100"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>
+</pic:pic>
+</a:graphicData>
+</a:graphic>
+</wp:inline>
+</w:drawing></w:r></w:p>
+<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>
+</w:body>
+</w:document>`;
+
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', contentTypes);
+  zip.folder('_rels').file('.rels', rels);
+  zip.folder('word').file('document.xml', documentXml);
+  zip.folder('word').folder('_rels').file('document.xml.rels', docRels);
+  zip.folder('word').folder('media').file('image1.png', arrayBuffer);
+
+  const zipBlob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  const url = URL.createObjectURL(zipBlob);
+  triggerFileDownload(url, filenameBase + '.docx');
+  setTimeout(()=> URL.revokeObjectURL(url), 5000);
+}
+
+async function downloadWhiteboardImage(){
+  if(!window.html2canvas){ alert('La herramienta para exportar no cargó — revisa tu conexión a internet.'); return; }
+  const format = document.getElementById('wbDownloadFormat').value;
+  const wrap = document.getElementById('wbZoomWrap');
+  const prevTransform = wrap.style.transform;
+  wrap.style.transform = 'none';
+  document.getElementById('status').textContent = 'Generando ' + format.toUpperCase() + '…';
+  try{
+    const canvas = await html2canvas(wrap, { backgroundColor: '#ffffff', useCORS: true, scale: 2 });
+    const filenameBase = 'Pizarra_' + (currentRoom || 'sala') + '_' + new Date().toISOString().slice(0,10);
+    if(format === 'png'){
+      const url = canvas.toDataURL('image/png');
+      triggerFileDownload(url, filenameBase + '.png');
+    } else if(format === 'pdf'){
+      await exportCanvasAsPdf(canvas, filenameBase);
+    } else if(format === 'docx'){
+      await exportCanvasAsDocx(canvas, filenameBase);
+    }
+    document.getElementById('status').textContent = '✅ Pizarra descargada';
+  }catch(err){
+    document.getElementById('status').textContent = '❌ No se pudo descargar: ' + err.message;
+  }finally{
+    wrap.style.transform = prevTransform;
+  }
+}
+
+document.getElementById('btnJoin').addEventListener('click', ()=>{
+  const code = (document.getElementById('roomInput').value || '').trim();
+  if(!code){ alert('Escribe el código que te dio tu profesor(a).'); return; }
+  joinRoom(code);
+});
+
+async function init(){
+  initCanvas();
+  const status = document.getElementById('status');
+  try{
+    const res = await fetch('firebase-config.json');
+    if(!res.ok) throw new Error('No se encontró firebase-config.json');
+    FIREBASE_CONFIG = await res.json();
+    if(!FIREBASE_CONFIG.apiKey || FIREBASE_CONFIG.apiKey.startsWith('PON_AQUI')){
+      status.textContent = '⚠️ Tu profesor(a) aún no configuró la pizarra.';
+      return;
+    }
+    fbApp = firebase.initializeApp(FIREBASE_CONFIG);
+    fbDb = firebase.database();
+    try{ fbStorage = firebase.storage(); }catch(e){ console.warn('Storage no disponible', e); }
+    status.textContent = 'Listo';
+  }catch(e){
+    status.textContent = '⚠️ No se pudo cargar la configuración de la pizarra.';
+    console.error(e);
+    return;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const roomFromUrl = params.get('room');
+  if(roomFromUrl){
+    document.getElementById('roomInput').value = roomFromUrl;
+    joinRoom(roomFromUrl);
+  }
+}
+init();
+</script>
+</body>
+</html>
